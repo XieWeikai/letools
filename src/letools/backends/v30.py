@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+import copy
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from letools._core import file_sizes
+from letools._arrow import canonical_data_schema, cast_data_table
+from letools._io import write_json
+from letools._stats import aggregate_episode_stats, flatten_stats
+from letools._video import concatenate_videos
+from letools.backends.base import DatasetBackend
+from letools.conversion_types import ConversionConfig
+from letools.model import Episode
+from letools.plugins import DatasetSource
+
+
+def _parquet_size_mb(path: Path) -> float:
+    metadata = pq.read_metadata(path)
+    size = sum(
+        metadata.row_group(row_group).column(column).total_uncompressed_size
+        for row_group in range(metadata.num_row_groups)
+        for column in range(metadata.row_group(row_group).num_columns)
+    )
+    return size / (1024**2)
+
+
+def _groups_by_size(items: list[Episode], sizes: list[float], limit: int) -> list[list[Episode]]:
+    groups: list[list[Episode]] = []
+    current: list[Episode] = []
+    current_size = 0.0
+    for item, size in zip(items, sizes, strict=True):
+        if current and current_size + size >= limit:
+            groups.append(current)
+            current = []
+            current_size = 0.0
+        current.append(item)
+        current_size += size
+    if current:
+        groups.append(current)
+    return groups
+
+
+class LeRobotV30Backend(DatasetBackend):
+    version = "v3.0"
+
+    def write(self, source: DatasetSource, destination: Path, config: ConversionConfig) -> None:
+        info = copy.deepcopy(source.metadata.info)
+        info["codebase_version"] = "v3.0"
+        info.pop("total_chunks", None)
+        info.pop("total_videos", None)
+        info["data_files_size_in_mb"] = config.data_file_size_mb
+        info["video_files_size_in_mb"] = config.video_file_size_mb
+        info["data_path"] = "data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet"
+        info["video_path"] = (
+            "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4"
+            if source.metadata.video_keys
+            else None
+        )
+        info["fps"] = int(source.metadata.fps)
+        for feature in info["features"].values():
+            if feature["dtype"] != "video":
+                feature["fps"] = source.metadata.fps
+        write_json(destination / "meta/info.json", info)
+        task_rows = [
+            {"task_index": index, "task": task}
+            for index, task in sorted(source.metadata.tasks.items())
+        ]
+        task_table = pa.Table.from_pylist(
+            task_rows,
+            schema=pa.schema([("task_index", pa.int64()), ("task", pa.string())]),
+        )
+        task_path = destination / "meta/tasks.parquet"
+        task_path.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(task_table, task_path)
+
+        episode_sizes = [_parquet_size_mb(episode.data_path) for episode in source.episodes]
+        data_groups = _groups_by_size(list(source.episodes), episode_sizes, config.data_file_size_mb)
+        data_schema = canonical_data_schema(source)
+        rows: dict[int, dict[str, Any]] = {}
+        global_offset = 0
+        for file_number, group in enumerate(data_groups):
+            chunk_index, file_index = divmod(file_number, config.chunks_size)
+            for episode in group:
+                rows[episode.index] = {
+                    "episode_index": episode.index,
+                    "data/chunk_index": chunk_index,
+                    "data/file_index": file_index,
+                    "dataset_from_index": global_offset,
+                    "dataset_to_index": global_offset + episode.length,
+                }
+                global_offset += episode.length
+
+        def write_data_group(item: tuple[int, list[Episode]]) -> None:
+            file_number, group = item
+            chunk_index, file_index = divmod(file_number, config.chunks_size)
+            path = destination / info["data_path"].format(
+                chunk_index=chunk_index, file_index=file_index
+            )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tables = [cast_data_table(table, data_schema) for table in source.read_episodes(group)]
+            pq.write_table(pa.concat_tables(tables), path)
+
+        with ThreadPoolExecutor(max_workers=min(config.workers, len(data_groups) or 1)) as pool:
+            list(pool.map(write_data_group, enumerate(data_groups)))
+
+        for video_key in source.metadata.video_keys:
+            episodes = list(source.episodes)
+            paths = [episode.videos[video_key].path for episode in episodes]
+            sizes = [size / (1024**2) for size in file_sizes(paths)]
+            video_groups = _groups_by_size(episodes, sizes, config.video_file_size_mb)
+            jobs = []
+            for file_number, group in enumerate(video_groups):
+                chunk_index, file_index = divmod(file_number, config.chunks_size)
+                elapsed = 0.0
+                for episode in group:
+                    duration = episode.videos[video_key].duration
+                    rows[episode.index].update(
+                        {
+                            f"videos/{video_key}/chunk_index": chunk_index,
+                            f"videos/{video_key}/file_index": file_index,
+                            f"videos/{video_key}/from_timestamp": elapsed,
+                            f"videos/{video_key}/to_timestamp": elapsed + duration,
+                        }
+                    )
+                    elapsed += duration
+                output = destination / info["video_path"].format(
+                    video_key=video_key, chunk_index=chunk_index, file_index=file_index
+                )
+                jobs.append(([episode.videos[video_key].path for episode in group], output))
+            with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:
+                list(pool.map(lambda job: concatenate_videos(*job), jobs))
+
+        episode_rows = []
+        for episode in source.episodes:
+            row = rows[episode.index]
+            row.update(
+                {
+                    "tasks": list(episode.tasks),
+                    "length": episode.length,
+                    **flatten_stats(episode.stats),
+                    "meta/episodes/chunk_index": 0,
+                    "meta/episodes/file_index": 0,
+                }
+            )
+            episode_rows.append(row)
+        episode_path = destination / "meta/episodes/chunk-000/file-000.parquet"
+        episode_path.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(pa.Table.from_pylist(episode_rows), episode_path)
+        stats = aggregate_episode_stats([episode.stats for episode in source.episodes])
+        write_json(destination / "meta/stats.json", stats)

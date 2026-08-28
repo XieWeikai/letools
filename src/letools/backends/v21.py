@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import copy
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import pyarrow.parquet as pq
+
+from letools._io import write_json, write_jsonl
+from letools._video import split_video
+from letools.backends.base import DatasetBackend
+from letools.conversion_types import ConversionConfig
+from letools.model import Episode
+from letools.plugins import DatasetSource
+
+
+class LeRobotV21Backend(DatasetBackend):
+    version = "v2.1"
+
+    def write(self, source: DatasetSource, destination: Path, config: ConversionConfig) -> None:
+        info = copy.deepcopy(source.metadata.info)
+        info["codebase_version"] = "v2.1"
+        info.pop("data_files_size_in_mb", None)
+        info.pop("video_files_size_in_mb", None)
+        info["chunks_size"] = config.chunks_size
+        info["total_chunks"] = (source.metadata.total_episodes + config.chunks_size - 1) // config.chunks_size
+        info["total_videos"] = source.metadata.total_episodes * len(source.metadata.video_keys)
+        info["data_path"] = "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet"
+        info["video_path"] = (
+            "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4"
+            if source.metadata.video_keys
+            else None
+        )
+        for feature in info["features"].values():
+            if feature["dtype"] != "video":
+                feature.pop("fps", None)
+        write_json(destination / "meta/info.json", info)
+        write_jsonl(
+            destination / "meta/tasks.jsonl",
+            [
+                {"task_index": index, "task": task}
+                for index, task in sorted(source.metadata.tasks.items())
+            ],
+        )
+        write_jsonl(
+            destination / "meta/episodes.jsonl",
+            [
+                {"episode_index": episode.index, "tasks": list(episode.tasks), "length": episode.length}
+                for episode in source.episodes
+            ],
+        )
+        write_jsonl(
+            destination / "meta/episodes_stats.jsonl",
+            [
+                {"episode_index": episode.index, "stats": episode.stats}
+                for episode in source.episodes
+            ],
+        )
+
+        data_groups: dict[Path, list[Episode]] = defaultdict(list)
+        for episode in source.episodes:
+            data_groups[episode.data_path].append(episode)
+
+        def write_data_group(group: list[Episode]) -> None:
+            for episode in group:
+                table = source.read_episode(episode)
+                path = destination / info["data_path"].format(
+                    episode_chunk=episode.index // config.chunks_size,
+                    episode_index=episode.index,
+                )
+                path.parent.mkdir(parents=True, exist_ok=True)
+                pq.write_table(table, path)
+
+        with ThreadPoolExecutor(max_workers=min(config.workers, len(data_groups) or 1)) as pool:
+            list(pool.map(write_data_group, data_groups.values()))
+
+        jobs = []
+        for video_key in source.metadata.video_keys:
+            groups: dict[Path, list[tuple[Episode, Path]]] = defaultdict(list)
+            for episode in source.episodes:
+                target = destination / info["video_path"].format(
+                    episode_chunk=episode.index // config.chunks_size,
+                    episode_index=episode.index,
+                    video_key=video_key,
+                )
+                groups[episode.videos[video_key].path].append((episode, target))
+            for path, group in groups.items():
+                jobs.append(
+                    (
+                        path,
+                        [(episode.videos[video_key], target) for episode, target in group],
+                    )
+                )
+        with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:
+            list(pool.map(lambda job: split_video(*job), jobs))

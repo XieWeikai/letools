@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+import shutil
+import time
+import uuid
+from pathlib import Path
+
+from letools.backends import LeRobotV21Backend, LeRobotV30Backend
+from letools.conversion_types import ConversionConfig, ConversionResult
+from letools.plugins import DatasetSource, open_dataset
+
+
+def _normalize_version(version: str) -> str:
+    value = version.lower().removeprefix("lerobot-").removeprefix("v")
+    if value in {"2.1", "21"}:
+        return "v2.1"
+    if value in {"3.0", "30", "3"}:
+        return "v3.0"
+    raise ValueError(f"Unsupported target version: {version}")
+
+
+def convert(
+    source: str | Path | DatasetSource,
+    destination: str | Path,
+    target_version: str,
+    *,
+    config: ConversionConfig | None = None,
+) -> ConversionResult:
+    config = config or ConversionConfig()
+    dataset = open_dataset(source) if isinstance(source, (str, Path)) else source
+    destination = Path(destination).resolve()
+    target_version = _normalize_version(target_version)
+    if dataset.metadata.version == target_version:
+        raise ValueError(f"Source is already {target_version}")
+    if destination.exists() and not config.overwrite:
+        raise FileExistsError(f"Destination already exists: {destination}")
+    backend = LeRobotV21Backend() if target_version == "v2.1" else LeRobotV30Backend()
+    staging = destination.with_name(f".{destination.name}.letools-{uuid.uuid4().hex}")
+    started = time.perf_counter()
+    try:
+        backend.write(dataset, staging, config)
+        if config.validate:
+            from letools.validation import validate_dataset
+
+            report = validate_dataset(staging, deep=False)
+            if not report.valid:
+                raise ValueError("Converted dataset is invalid: " + "; ".join(report.errors))
+        if destination.exists():
+            shutil.rmtree(destination)
+        staging.replace(destination)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return ConversionResult(
+        source=dataset.root,
+        destination=destination,
+        source_version=dataset.metadata.version,
+        target_version=target_version,
+        episodes=dataset.metadata.total_episodes,
+        frames=dataset.metadata.total_frames,
+        elapsed_seconds=time.perf_counter() - started,
+    )
+
+
+__all__ = ["ConversionConfig", "ConversionResult", "convert"]
