@@ -1,0 +1,19 @@
+[project]
+name = "letools"
+version = "0.1.0"
+description = "High-performance tools for creating and converting LeRobot datasets"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.maturin]
+module-name = "letools._core"
+python-packages = ["letools"]
+python-source = "src"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
