@@ -172,7 +172,7 @@ def _video_digest_map(source: DatasetSource) -> dict[tuple[int, str], str]:
         ]
 
     result = {}
-    with ThreadPoolExecutor(max_workers=min(4, len(grouped) or 1)) as pool:
+    with ThreadPoolExecutor(max_workers=min(3, len(grouped) or 1)) as pool:
         for values in pool.map(digest_group, grouped.items()):
             result.update(values)
     return result
