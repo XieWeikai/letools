@@ -2,7 +2,7 @@ use pyo3::exceptions::PyOSError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "video")]
 use ffmpeg_next as ffmpeg;
@@ -184,6 +184,184 @@ fn concat_videos(inputs: &[PathBuf], output: &PathBuf) -> Result<(), String> {
 }
 
 #[cfg(feature = "video")]
+struct SplitOutput {
+    context: ffmpeg::format::context::Output,
+    temporary: tempfile::TempPath,
+    target: PathBuf,
+    stream_mapping: Vec<isize>,
+    output_time_bases: Vec<ffmpeg::Rational>,
+    timestamp_offsets: Vec<i64>,
+}
+
+#[cfg(feature = "video")]
+fn open_split_output(
+    target: &Path,
+    start: f64,
+    stream_count: usize,
+    streams: &[(usize, ffmpeg::codec::Parameters, ffmpeg::Rational)],
+) -> Result<SplitOutput, String> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
+    fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+    let temporary = tempfile::Builder::new()
+        .suffix(".mp4")
+        .tempfile_in(parent)
+        .map_err(|error| format!("create temporary output: {error}"))?
+        .into_temp_path();
+    let mut context = ffmpeg::format::output(&temporary)
+        .map_err(|error| format!("open temporary output: {error}"))?;
+    let mut stream_mapping = vec![-1_isize; stream_count];
+    let mut timestamp_offsets = vec![0_i64; stream_count];
+    for (output_index, (input_index, parameters, time_base)) in streams.iter().enumerate() {
+        stream_mapping[*input_index] = output_index as isize;
+        timestamp_offsets[*input_index] = (start / f64::from(*time_base)).round() as i64;
+        let mut output_stream = context
+            .add_stream(ffmpeg::encoder::find(ffmpeg::codec::Id::None))
+            .map_err(|error| format!("add output stream: {error}"))?;
+        output_stream.set_parameters(parameters.clone());
+        output_stream.set_time_base(*time_base);
+        unsafe {
+            (*output_stream.parameters().as_mut_ptr()).codec_tag = 0;
+        }
+    }
+    context
+        .write_header()
+        .map_err(|error| format!("write output header: {error}"))?;
+    let output_time_bases = context.streams().map(|stream| stream.time_base()).collect();
+    Ok(SplitOutput {
+        context,
+        temporary,
+        target: target.to_path_buf(),
+        stream_mapping,
+        output_time_bases,
+        timestamp_offsets,
+    })
+}
+
+#[cfg(feature = "video")]
+fn close_split_output(mut output: SplitOutput) -> Result<(), String> {
+    output
+        .context
+        .write_trailer()
+        .map_err(|error| format!("write {} trailer: {error}", output.target.display()))?;
+    drop(output.context);
+    output
+        .temporary
+        .persist(&output.target)
+        .map_err(|error| format!("publish {}: {error}", output.target.display()))?;
+    Ok(())
+}
+
+#[cfg(feature = "video")]
+fn split_video_slices(source: &PathBuf, outputs: &[(f64, f64, PathBuf)]) -> Result<(), String> {
+    if outputs.is_empty() {
+        return Ok(());
+    }
+    if outputs
+        .iter()
+        .enumerate()
+        .any(|(index, (start, end, _))| start > end || (index > 0 && *start < outputs[index - 1].0))
+    {
+        return Err("video slices must be valid and ordered by start time".to_string());
+    }
+
+    ffmpeg::init().map_err(|error| format!("initialize FFmpeg: {error}"))?;
+    let mut input = ffmpeg::format::input(source)
+        .map_err(|error| format!("open {}: {error}", source.display()))?;
+    let stream_count = input.nb_streams() as usize;
+    let streams: Vec<_> = input
+        .streams()
+        .filter(|stream| {
+            matches!(
+                stream.parameters().medium(),
+                ffmpeg::media::Type::Audio
+                    | ffmpeg::media::Type::Video
+                    | ffmpeg::media::Type::Subtitle
+            )
+        })
+        .map(|stream| {
+            (
+                stream.index(),
+                stream.parameters().clone(),
+                stream.time_base(),
+            )
+        })
+        .collect();
+    if streams.is_empty() {
+        return Err(format!("{} has no supported streams", source.display()));
+    }
+    let input_time_bases: Vec<_> = input.streams().map(|stream| stream.time_base()).collect();
+
+    let mut current_index: Option<usize> = None;
+    let mut active: Option<SplitOutput> = None;
+    for (stream, mut packet) in input.packets() {
+        let input_index = stream.index();
+        if packet.dts().is_none()
+            || !matches!(
+                stream.parameters().medium(),
+                ffmpeg::media::Type::Audio
+                    | ffmpeg::media::Type::Video
+                    | ffmpeg::media::Type::Subtitle
+            )
+        {
+            continue;
+        }
+        let timestamp_value = packet.pts().unwrap_or_else(|| packet.dts().unwrap());
+        let timestamp = timestamp_value as f64 * f64::from(input_time_bases[input_index]);
+        while current_index.map_or(0, |index| index + 1) < outputs.len()
+            && timestamp >= outputs[current_index.map_or(0, |index| index + 1)].0 - 1e-7
+        {
+            if let Some(output) = active.take() {
+                close_split_output(output)?;
+            }
+            let next_index = current_index.map_or(0, |index| index + 1);
+            active = Some(open_split_output(
+                &outputs[next_index].2,
+                outputs[next_index].0,
+                stream_count,
+                &streams,
+            )?);
+            current_index = Some(next_index);
+        }
+
+        let Some(index) = current_index else {
+            continue;
+        };
+        let Some(output) = active.as_mut() else {
+            continue;
+        };
+        if timestamp >= outputs[index].1 - 1e-7 {
+            continue;
+        }
+        let mapped_index = output.stream_mapping[input_index];
+        if mapped_index < 0 {
+            continue;
+        }
+        if let Some(pts) = packet.pts() {
+            packet.set_pts(Some(pts - output.timestamp_offsets[input_index]));
+        }
+        packet.set_dts(
+            packet
+                .dts()
+                .map(|dts| dts - output.timestamp_offsets[input_index]),
+        );
+        packet.rescale_ts(
+            input_time_bases[input_index],
+            output.output_time_bases[mapped_index as usize],
+        );
+        packet.set_stream(mapped_index as usize);
+        packet
+            .write_interleaved(&mut output.context)
+            .map_err(|error| format!("write {} packet: {error}", output.target.display()))?;
+    }
+    if let Some(output) = active {
+        close_split_output(output)?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "video")]
 #[pyfunction]
 fn packet_digests(py: Python<'_>, path: PathBuf, slices: Vec<(f64, f64)>) -> PyResult<Vec<String>> {
     py.detach(|| digest_packets(&path, &slices))
@@ -197,6 +375,13 @@ fn concatenate_videos(py: Python<'_>, inputs: Vec<PathBuf>, output: PathBuf) -> 
         .map_err(PyOSError::new_err)
 }
 
+#[cfg(feature = "video")]
+#[pyfunction]
+fn split_video(py: Python<'_>, source: PathBuf, outputs: Vec<(f64, f64, PathBuf)>) -> PyResult<()> {
+    py.detach(|| split_video_slices(&source, &outputs))
+        .map_err(PyOSError::new_err)
+}
+
 #[pyfunction]
 fn build_info() -> (&'static str, Vec<&'static str>) {
     let capabilities = vec!["filesystem"];
@@ -205,6 +390,7 @@ fn build_info() -> (&'static str, Vec<&'static str>) {
         let mut capabilities = capabilities;
         capabilities.push("video-packet-digests");
         capabilities.push("video-concat");
+        capabilities.push("video-split");
         capabilities
     };
     (env!("CARGO_PKG_VERSION"), capabilities)
@@ -217,5 +403,5 @@ mod letools_native {
 
     #[cfg(feature = "video")]
     #[pymodule_export]
-    use super::{concatenate_videos, packet_digests};
+    use super::{concatenate_videos, packet_digests, split_video};
 }

@@ -69,6 +69,15 @@ def split_video(
             outputs[0][1].parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, outputs[0][1])
             return
+    if _native.video_split_available():
+        _native.split_video(
+            source_path,
+            [
+                (video_slice.start, video_slice.end, target)
+                for video_slice, target in outputs
+            ],
+        )
+        return
 
     source = av.open(str(source_path), mode="r")
     input_streams = {

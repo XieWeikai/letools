@@ -30,6 +30,10 @@ def video_concat_available() -> bool:
     return _native is not None and hasattr(_native, "concatenate_videos")
 
 
+def video_split_available() -> bool:
+    return _native is not None and hasattr(_native, "split_video")
+
+
 def file_sizes(paths: Sequence[Path]) -> list[int]:
     if _native is not None:
         return _native.file_sizes(list(paths))
@@ -57,3 +61,9 @@ def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
     if not video_concat_available():
         raise RuntimeError("native video concat capability is unavailable")
     _native.concatenate_videos(list(inputs), output)
+
+
+def split_video(source: Path, outputs: Sequence[tuple[float, float, Path]]) -> None:
+    if not video_split_available():
+        raise RuntimeError("native video split capability is unavailable")
+    _native.split_video(source, list(outputs))
