@@ -33,7 +33,7 @@ def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
         temporary = Path(handle.name)
     try:
         source = av.open(str(listing_path), mode="r", format="concat", options={"safe": "0"})
-        destination = av.open(str(temporary), mode="w", options={"movflags": "faststart"})
+        destination = av.open(str(temporary), mode="w")
         streams = {}
         for stream in source.streams:
             if stream.type in {"video", "audio", "subtitle"}:
