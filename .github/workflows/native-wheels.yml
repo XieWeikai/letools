@@ -13,8 +13,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   build:
@@ -92,21 +90,10 @@ jobs:
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
             gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
           gh release upload "$GITHUB_REF_NAME" dist/*.whl --clobber
-      - name: Build Python package index
-        run: python scripts/build_simple_index.py dist public "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: public
-
-  deploy-index:
-    if: startsWith(github.ref, 'refs/tags/native-v')
-    needs: release
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy package index
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Trigger package index deployment from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/dispatches" \
+            -f event_type=native-release \
+            -F "client_payload[tag]=$GITHUB_REF_NAME"
