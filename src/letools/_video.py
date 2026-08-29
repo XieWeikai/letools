@@ -101,7 +101,7 @@ def split_video(
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 with tempfile.NamedTemporaryFile(suffix=target_path.suffix, delete=False) as handle:
                     temporary = Path(handle.name)
-                destination = av.open(str(temporary), mode="w", options={"movflags": "faststart"})
+                destination = av.open(str(temporary), mode="w")
                 stream_map = {}
                 timestamp_offsets = {}
                 for index, stream in input_streams.items():
