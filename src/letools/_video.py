@@ -8,6 +8,7 @@ from pathlib import Path
 
 import av
 
+from letools import _native
 from letools.model import VideoSlice
 
 
@@ -132,6 +133,12 @@ def split_video(
 def packet_digests(slices: Sequence[VideoSlice]) -> list[str]:
     if not slices:
         return []
+    if _native.video_packet_digests_available():
+        return _native.packet_digests(
+            slices[0].path,
+            [(video_slice.start, video_slice.end) for video_slice in slices],
+        )
+
     source = av.open(str(slices[0].path), mode="r")
     time_base = float(source.streams.video[0].time_base)
     digests = [hashlib.sha256() for _ in slices]
