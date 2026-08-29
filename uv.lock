@@ -69,6 +69,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "av" },
+    { name = "letools-native" },
     { name = "numpy" },
     { name = "pyarrow" },
 ]
@@ -84,6 +85,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "av", specifier = ">=15,<17" },
+    { name = "letools-native", specifier = "==0.1.0", index = "https://xieweikai.github.io/letools/simple" },
     { name = "numpy", specifier = ">=2" },
     { name = "pyarrow", specifier = ">=18" },
 ]
@@ -91,6 +93,18 @@ requires-dist = [
 [package.metadata.requires-dev]
 native-dev = [{ name = "maturin", specifier = ">=1.9,<2" }]
 test = [{ name = "pytest", specifier = ">=8" }]
+
+[[package]]
+name = "letools-native"
+version = "0.1.0"
+source = { registry = "https://xieweikai.github.io/letools/simple" }
+wheels = [
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:a974af629ae27bbd1b11609f6087adfb91c99a50921826054111287fad3113d8" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:1b662c7ce7b9ac9c15971537b59ba959ba99701fef561e52d8a9c9460f7d2689" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:a1b91a46ef19840234712f5baa0606b9ef9987cc1c87bea8109bde259853d6e7" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:25ba8ca545e2e5ffc1f42769dca03b366d411990180dc9e8fe4e0eaae5a1e326" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-win_amd64.whl", hash = "sha256:0dbad0a3d733f572aa7558ce2c7c6dde341f483bf7a76f89eb58ec7ee51d3283" },
+]
 
 [[package]]
 name = "maturin"

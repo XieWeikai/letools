@@ -20,11 +20,17 @@ uv sync --locked
 uv run letools doctor
 ```
 
-No compiler, Rust toolchain, FFmpeg headers, `pkg-config`, libclang, or shell
-environment file is required for this path. PyAV's official wheel includes the
-FFmpeg runtime used by the portable Python implementation. A system or
-user-installed `ffmpeg` executable is detected and reported, but it is not a
-prerequisite.
+That single sync command installs both the Python frontend and the matching
+prebuilt native wheel from the letools package index. On Linux x86-64 the native
+wheel includes the minimal FFmpeg 8 runtime used by Rust packet hashing,
+concatenation, and splitting. No compiler, Rust toolchain, FFmpeg headers,
+`pkg-config`, libclang, `LD_LIBRARY_PATH`, or shell environment file is needed.
+
+macOS, Windows, and Linux aarch64 receive the portable native filesystem
+primitives while PyAV handles video. PyAV's official wheel carries its own
+FFmpeg runtime, so these platforms also need no system FFmpeg. A system or
+user-installed `ffmpeg` executable is detected by `letools doctor`, but runtime
+conversion never depends on finding it in `PATH`.
 
 ## Command line
 
@@ -124,15 +130,22 @@ and `_native.py`. The self-improvement protocol deliberately keeps performance
 complexity inside these primitives and backends rather than leaking it into the
 plugin API.
 
+The Rust boundary is deliberately coarse. Python passes paths and episode time
+ranges once per file; Rust owns open/demux/remux/hash/trailer/close and releases
+the GIL for the entire operation. No packet, frame, or FFmpeg context crosses
+the language boundary.
+
 ## FFmpeg providers
 
 There are two deliberately isolated FFmpeg consumers:
 
 1. PyAV uses the FFmpeg libraries bundled in its official wheel. This is the
    portable fallback and makes `uv sync --locked` work on a clean machine.
-2. Released `letools-native` wheels bundle the FFmpeg libraries required by the
-   Rust hot path. Wheel repair writes a relative runtime search path, so users
-   do not configure `PATH`, `PKG_CONFIG_PATH`, or `LD_LIBRARY_PATH`.
+2. The released Linux x86-64 `letools-native` wheel bundles the FFmpeg libraries
+   required by the Rust hot path. Wheel repair writes a relative runtime search
+   path, so users do not configure `PATH`, `PKG_CONFIG_PATH`, or
+   `LD_LIBRARY_PATH`. Other released native wheels omit FFmpeg and select the
+   PyAV video fallback automatically.
 
 The two libraries never exchange `AVPacket*`, `AVFrame*`, codec contexts, or
 hardware contexts. Python passes paths, episode time ranges, and output paths;
@@ -146,9 +159,18 @@ is not silently installed or modified by letools.
 ## Native wheels
 
 `native/` is a separate `letools-native` Python distribution built with PyO3
-and maturin. Release tags named `native-vX.Y.Z` trigger GitHub Actions to build
-abi3 wheels for Linux x86-64/aarch64, macOS x86-64/arm64, and Windows x86-64.
-The wheels are attached to the GitHub release and indexed through GitHub Pages.
+and maturin. It is a normal locked dependency of the root package, resolved
+from `https://xieweikai.github.io/letools/simple`. Release tags named
+`native-vX.Y.Z` trigger GitHub Actions to build abi3 wheels for Linux
+x86-64/aarch64, macOS x86-64/arm64, and Windows x86-64. The wheels are attached
+to the GitHub release; a default-branch workflow then updates the Pages index.
+
+The Linux x86-64 job downloads FFmpeg 8.0.3 from ffmpeg.org, verifies its pinned
+SHA-256, builds a minimal LGPL configuration, compiles the Rust video feature,
+and lets maturin/auditwheel bundle only required shared libraries. A clean venv
+then imports the wheel with every FFmpeg/compiler library environment variable
+removed. Exact configure flags and notices are shipped in
+`scripts/build_ffmpeg_linux.sh` and `native/THIRD_PARTY_NOTICES.md`.
 
 The main package remains pure Python. This separation is important: uv builds a
 cloned root project in editable mode, so embedding maturin at the root would
@@ -170,6 +192,22 @@ system or user FFmpeg SDK. That SDK must provide headers, shared libraries, and
 `libavformat.pc`, `libavcodec.pc`, and `libavutil.pc`; an `ffmpeg` executable
 alone is not a development SDK. Released wheels remain self-contained.
 
+For the video feature, expose that SDK only to the development command:
+
+```bash
+PKG_CONFIG_PATH=/path/to/ffmpeg/lib/pkgconfig \
+LIBRARY_PATH=/path/to/ffmpeg/lib \
+LD_LIBRARY_PATH=/path/to/ffmpeg/lib \
+LIBCLANG_PATH=/path/to/libclang \
+uv run maturin develop --manifest-path native/Cargo.toml --locked --features video
+cargo clippy --manifest-path native/Cargo.toml --locked --features video -- -D warnings
+```
+
+These variables are build-time developer inputs, not user setup. CI exercises
+the locked user install, forced Python fallback, portable source build, FFmpeg
+source build, five-platform wheel matrix, clean wheel import, release upload,
+and package-index deployment.
+
 ## Correctness and performance
 
 Semantic validation covers metadata, episode boundaries, Arrow schemas and
@@ -177,10 +215,13 @@ values, statistics, and encoded video packet payloads. Physical Parquet layout
 and MP4 container metadata may differ when the resulting datasets are
 semantically equivalent.
 
-The frozen full benchmark contains 3,457 episodes, 2,415,341 frames, and 10,371
-episode-camera video slices. See [BENCHMARK.md](BENCHMARK.md) for the current
-official comparison and [self-improve/PROTOCOL.md](self-improve/PROTOCOL.md)
-for profiling, correctness, resource, and acceptance rules.
+The frozen full benchmark contains 3,457 episodes, 2,415,341 frames, 10,371
+episode-camera video slices, and about 39 GiB. With 8 CPUs, 48 GiB, and three
+video workers, the accepted Rust concat path measured 52.09 seconds for
+v2.1-to-v3.0 and the Rust split path measured 109.01 seconds for v3.0-to-v2.1.
+See [BENCHMARK.md](BENCHMARK.md) for medians and resource data, and
+[self-improve/PROTOCOL.md](self-improve/PROTOCOL.md) for profiling,
+correctness, resource, and acceptance rules.
 
 ## License
 

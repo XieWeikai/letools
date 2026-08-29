@@ -1,25 +1,31 @@
-# MVP benchmark
+# Current benchmark
 
-Date: 2026-08-28
+Updated: 2026-08-29
 
 Dataset: `dagger`, 3,457 episodes, 2,415,341 frames, 10,371 episode videos,
 approximately 39 GiB in LeRobot v2.1 format.
 
-Both forward conversions used one Slurm node with 8 CPUs and 48 GiB RAM. The target
-sizes were 100 MiB for Parquet and 200 MiB for video. Post-conversion validation was
-excluded from both timings. The official baseline used the unmodified LeRobot repository
-at commit `bf31dd794ffb4f87380aba3912f64421e8352d3c`.
+Acceptance runs used one H800 Slurm node with 8 CPUs, 48 GiB RAM, eight
+Parquet workers, and three video workers. The target sizes were 100 MiB for
+Parquet and 200 MiB for video. Every run wrote a unique destination. Medians
+come from three alternating current-main/candidate pairs.
 
-| Converter | Direction | Wall time | Peak RSS | Relative speed |
+| Direction/workload | Before Rust primitive | Current | Speedup | Current peak RSS |
 |---|---:|---:|---:|---:|
-| LeRobot official | v2.1 to v3.0 | 273.06 s | 1,283,400 KiB | 1.00x |
-| letools | v2.1 to v3.0 | 156.04 s | 1,128,104 KiB | 1.75x |
-| letools | v3.0 to v2.1 | 352.91 s | 1,663,824 KiB | n/a |
+| v2.1 to v3.0 concat | 106.92 s | 52.09 s | 2.05x | 1,108,484 KiB |
+| v3.0 to v2.1 split | 143.59 s | 109.01 s | 1.32x | 1,780,984 KiB |
+| full video payload compare | 147.90 s | 51.76 s | 2.86x | 848,116 KiB |
 
-The letools forward conversion reduced wall time by 42.9% and peak RSS by 12.1% versus
-the official converter in these runs. Video remux uses a node-local temporary MP4 and a
-single sequential publish stream by default; concurrent large-file remux was substantially
-slower on JuiceFS.
+Rust concat reduced median CPU from 221.98 to 115.08 seconds. Rust split
+reduced median CPU from 155.03 to 57.07 seconds and voluntary context switches
+from 5,253,000 to 820,704. Split wall time improved less than CPU because the
+remaining work waits on roughly 39 GiB of JuiceFS output. Larger CPU allocations
+did not improve the established I/O-limited resource curve.
+
+The original official LeRobot v2.1-to-v3.0 reference run was 273.06 seconds at
+commit `bf31dd794ffb4f87380aba3912f64421e8352d3c`. It predates the current paired
+series and is retained as historical context, not multiplied into the per-
+iteration speedups above.
 
 ## Correctness checks
 
@@ -27,17 +33,13 @@ slower on JuiceFS.
 - All 3,457 episode Arrow tables matched the official v3.0 output.
 - Tasks, feature schemas, episode statistics, and dataset totals matched.
 - Encoded packet payload hashes matched for all 10,371 videos.
-- The full v2.1 to v3.0 to v2.1 round trip matched the original dataset.
+- Both full roundtrip directions matched their source datasets.
+- Official `LeRobotDatasetMetadata` and `LeRobotDataset` loaded the final v3.0
+  roundtrip and decoded frames 0, 1,207,670, and 2,415,340.
 
 Validation compares semantics rather than container or Parquet byte identity because both
 formats permit equivalent metadata ordering, row-group layout, and MP4 container metadata.
 
-## Source metadata caveat
-
-The source v2.1 dataset declares `observation.state` and `action` with shape `[1, 14]`, while
-its Parquet columns contain one-dimensional `list<float>` values of length 14. The official
-converter preserves this mismatch, so both the official v3.0 result and the byte-equivalent
-letools schema pass `LeRobotDatasetMetadata` but fail the current `LeRobotDataset` loader with
-the same Arrow `float to list` cast error. The letools validator reports this inherited issue as
-a schema warning. Changing it during conversion would diverge from the designated official
-golden result and would make the round trip lossy at the metadata level.
+Current LeRobot intentionally rejects loading v2.1 directly and requests a v3.0
+conversion. letools therefore validates v2.1 structurally and semantically,
+then uses the v3.0 roundtrip for official current-loader acceptance.

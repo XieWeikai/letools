@@ -17,6 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "av>=15,<17",
+    "letools-native==0.1.0",
     "numpy>=2",
     "pyarrow>=18",
 ]
@@ -33,6 +34,14 @@ packages = ["src/letools"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[[tool.uv.index]]
+name = "letools-native"
+url = "https://xieweikai.github.io/letools/simple"
+explicit = true
+
+[tool.uv.sources]
+letools-native = { index = "letools-native" }
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]
