@@ -11,3 +11,6 @@ wheels/
 .pytest_cache/
 target/
 *.so
+
+# Local self-improvement experiments and reports
+self-improve/
