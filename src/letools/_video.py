@@ -72,9 +72,11 @@ def split_video(
         for stream in source.streams
         if stream.type in {"video", "audio", "subtitle"}
     }
+    time_bases = {index: float(stream.time_base) for index, stream in input_streams.items()}
     current_index = -1
     destination = None
     stream_map = {}
+    timestamp_offsets = {}
     temporary: Path | None = None
 
     def close_current() -> None:
@@ -91,7 +93,7 @@ def split_video(
             if packet.dts is None or packet.stream.index not in input_streams:
                 continue
             timestamp_value = packet.pts if packet.pts is not None else packet.dts
-            timestamp = float(timestamp_value * packet.time_base)
+            timestamp = timestamp_value * time_bases[packet.stream.index]
             while current_index + 1 < len(outputs) and timestamp >= outputs[current_index + 1][0].start - 1e-7:
                 close_current()
                 current_index += 1
@@ -101,20 +103,22 @@ def split_video(
                     temporary = Path(handle.name)
                 destination = av.open(str(temporary), mode="w", options={"movflags": "faststart"})
                 stream_map = {}
+                timestamp_offsets = {}
                 for index, stream in input_streams.items():
                     target = destination.add_stream_from_template(stream, opaque=True)
                     target.time_base = stream.time_base
                     stream_map[index] = target
+                    timestamp_offsets[index] = int(round(video_slice.start / time_bases[index]))
             if current_index < 0 or destination is None:
                 continue
+            stream_index = packet.stream.index
             video_slice = outputs[current_index][0]
             if timestamp >= video_slice.end - 1e-7:
                 continue
-            offset = int(round(video_slice.start / float(packet.time_base)))
             if packet.pts is not None:
-                packet.pts -= offset
-            packet.dts -= offset
-            packet.stream = stream_map[packet.stream.index]
+                packet.pts -= timestamp_offsets[stream_index]
+            packet.dts -= timestamp_offsets[stream_index]
+            packet.stream = stream_map[stream_index]
             destination.mux(packet)
         close_current()
     finally:
