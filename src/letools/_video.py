@@ -23,6 +23,9 @@ def video_duration(path: Path) -> float:
 def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
     if not inputs:
         raise ValueError("At least one input video is required")
+    if _native.video_concat_available():
+        _native.concatenate_videos(inputs, output)
+        return
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", suffix=".ffconcat", delete=False) as listing:
         listing.write("ffconcat version 1.0\n")

@@ -12,10 +12,11 @@ crate-type = ["cdylib"]
 
 [features]
 default = []
-video = ["dep:ffmpeg-next", "dep:sha2"]
+video = ["dep:ffmpeg-next", "dep:sha2", "dep:tempfile"]
 
 [dependencies]
 ffmpeg-next = { version = "8.1.0", default-features = false, features = ["format"], optional = true }
 pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py39"] }
 rayon = "1.10"
 sha2 = { version = "0.10", optional = true }
+tempfile = { version = "3", optional = true }

@@ -26,6 +26,10 @@ def video_packet_digests_available() -> bool:
     return _native is not None and hasattr(_native, "packet_digests")
 
 
+def video_concat_available() -> bool:
+    return _native is not None and hasattr(_native, "concatenate_videos")
+
+
 def file_sizes(paths: Sequence[Path]) -> list[int]:
     if _native is not None:
         return _native.file_sizes(list(paths))
@@ -47,3 +51,9 @@ def packet_digests(path: Path, slices: Sequence[tuple[float, float]]) -> list[st
     if not video_packet_digests_available():
         raise RuntimeError("native packet digest capability is unavailable")
     return _native.packet_digests(path, list(slices))
+
+
+def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
+    if not video_concat_available():
+        raise RuntimeError("native video concat capability is unavailable")
+    _native.concatenate_videos(list(inputs), output)

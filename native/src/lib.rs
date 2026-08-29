@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use ffmpeg_next as ffmpeg;
 #[cfg(feature = "video")]
 use sha2::{Digest, Sha256};
+#[cfg(feature = "video")]
+use std::io::Write;
 
 #[pyfunction]
 fn file_sizes(py: Python<'_>, paths: Vec<PathBuf>) -> PyResult<Vec<u64>> {
@@ -86,9 +88,112 @@ fn digest_packets(path: &PathBuf, slices: &[(f64, f64)]) -> Result<Vec<String>, 
 }
 
 #[cfg(feature = "video")]
+fn concat_videos(inputs: &[PathBuf], output: &PathBuf) -> Result<(), String> {
+    if inputs.is_empty() {
+        return Err("at least one input video is required".to_string());
+    }
+    ffmpeg::init().map_err(|error| format!("initialize FFmpeg: {error}"))?;
+
+    let mut listing = tempfile::Builder::new()
+        .suffix(".ffconcat")
+        .tempfile()
+        .map_err(|error| format!("create concat list: {error}"))?;
+    writeln!(listing, "ffconcat version 1.0")
+        .map_err(|error| format!("write concat list: {error}"))?;
+    for path in inputs {
+        let resolved = path
+            .canonicalize()
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        let escaped = resolved.to_string_lossy().replace('\'', "'\\''");
+        writeln!(listing, "file '{escaped}'")
+            .map_err(|error| format!("write concat list: {error}"))?;
+    }
+    listing
+        .flush()
+        .map_err(|error| format!("flush concat list: {error}"))?;
+
+    let mut options = ffmpeg::Dictionary::new();
+    options.set("safe", "0");
+    let mut input = ffmpeg::format::input_with_dictionary(listing.path(), options)
+        .map_err(|error| format!("open concat input: {error}"))?;
+    let parent = output
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", output.display()))?;
+    fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+    let temporary = tempfile::Builder::new()
+        .suffix(".mp4")
+        .tempfile_in(parent)
+        .map_err(|error| format!("create temporary output: {error}"))?
+        .into_temp_path();
+    let mut destination = ffmpeg::format::output(&temporary)
+        .map_err(|error| format!("open temporary output: {error}"))?;
+
+    let mut stream_mapping = vec![-1_isize; input.nb_streams() as usize];
+    let mut input_time_bases = vec![ffmpeg::Rational(0, 1); input.nb_streams() as usize];
+    let mut output_index = 0_isize;
+    for (input_index, stream) in input.streams().enumerate() {
+        let medium = stream.parameters().medium();
+        if !matches!(
+            medium,
+            ffmpeg::media::Type::Audio | ffmpeg::media::Type::Video | ffmpeg::media::Type::Subtitle
+        ) {
+            continue;
+        }
+        stream_mapping[input_index] = output_index;
+        input_time_bases[input_index] = stream.time_base();
+        output_index += 1;
+        let mut target = destination
+            .add_stream(ffmpeg::encoder::find(ffmpeg::codec::Id::None))
+            .map_err(|error| format!("add output stream: {error}"))?;
+        target.set_parameters(stream.parameters());
+        target.set_time_base(stream.time_base());
+        unsafe {
+            (*target.parameters().as_mut_ptr()).codec_tag = 0;
+        }
+    }
+
+    destination.set_metadata(input.metadata().to_owned());
+    destination
+        .write_header()
+        .map_err(|error| format!("write output header: {error}"))?;
+    for (stream, mut packet) in input.packets() {
+        let input_index = stream.index();
+        let mapped_index = stream_mapping[input_index];
+        if mapped_index < 0 || packet.dts().is_none() {
+            continue;
+        }
+        let output_time_base = destination
+            .stream(mapped_index as usize)
+            .ok_or_else(|| "missing output stream".to_string())?
+            .time_base();
+        packet.rescale_ts(input_time_bases[input_index], output_time_base);
+        packet.set_stream(mapped_index as usize);
+        packet
+            .write_interleaved(&mut destination)
+            .map_err(|error| format!("write packet: {error}"))?;
+    }
+    destination
+        .write_trailer()
+        .map_err(|error| format!("write output trailer: {error}"))?;
+
+    drop(destination);
+    temporary
+        .persist(output)
+        .map_err(|error| format!("publish {}: {error}", output.display()))?;
+    Ok(())
+}
+
+#[cfg(feature = "video")]
 #[pyfunction]
 fn packet_digests(py: Python<'_>, path: PathBuf, slices: Vec<(f64, f64)>) -> PyResult<Vec<String>> {
     py.detach(|| digest_packets(&path, &slices))
+        .map_err(PyOSError::new_err)
+}
+
+#[cfg(feature = "video")]
+#[pyfunction]
+fn concatenate_videos(py: Python<'_>, inputs: Vec<PathBuf>, output: PathBuf) -> PyResult<()> {
+    py.detach(|| concat_videos(&inputs, &output))
         .map_err(PyOSError::new_err)
 }
 
@@ -99,6 +204,7 @@ fn build_info() -> (&'static str, Vec<&'static str>) {
     let capabilities = {
         let mut capabilities = capabilities;
         capabilities.push("video-packet-digests");
+        capabilities.push("video-concat");
         capabilities
     };
     (env!("CARGO_PKG_VERSION"), capabilities)
@@ -111,5 +217,5 @@ mod letools_native {
 
     #[cfg(feature = "video")]
     #[pymodule_export]
-    use super::packet_digests;
+    use super::{concatenate_videos, packet_digests};
 }
