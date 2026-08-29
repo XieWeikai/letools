@@ -9,7 +9,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from letools._core import file_sizes
+from letools._native import file_sizes
 from letools._arrow import canonical_data_schema, cast_data_table, normalize_feature_shapes
 from letools._io import write_json
 from letools._stats import aggregate_episode_stats, flatten_stats

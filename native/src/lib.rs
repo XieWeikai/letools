@@ -38,11 +38,13 @@ fn copy_files(py: Python<'_>, files: Vec<(PathBuf, PathBuf)>) -> PyResult<Vec<u6
     result.map_err(PyOSError::new_err)
 }
 
-/// A Python module implemented in Rust. The name of this module must match
-/// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
-/// import the module.
+#[pyfunction]
+fn build_info() -> (&'static str, &'static str) {
+    (env!("CARGO_PKG_VERSION"), "filesystem")
+}
+
 #[pymodule]
-mod _core {
+mod letools_native {
     #[pymodule_export]
-    use super::{copy_files, file_sizes};
+    use super::{build_info, copy_files, file_sizes};
 }

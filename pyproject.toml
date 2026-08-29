@@ -4,6 +4,17 @@ version = "0.1.0"
 description = "High-performance tools for creating and converting LeRobot datasets"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Weikai Xie", email = "xxxweikai@gmail.com" }]
+keywords = ["lerobot", "dataset", "robotics", "conversion"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "av>=15,<17",
     "numpy>=2",
@@ -14,18 +25,15 @@ dependencies = [
 letools = "letools.cli:main"
 
 [dependency-groups]
-dev = [
-    "pytest>=8",
-]
+test = ["pytest>=8"]
+native-dev = ["maturin>=1.9,<2"]
 
-[tool.maturin]
-module-name = "letools._core"
-python-packages = ["letools"]
-python-source = "src"
+[tool.hatch.build.targets.wheel]
+packages = ["src/letools"]
 
-[tool.uv]
-cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"

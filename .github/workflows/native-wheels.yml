@@ -1,0 +1,90 @@
+name: Native wheels
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "native-v*"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2_28"
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            manylinux: "off"
+          - os: macos-15
+            target: aarch64-apple-darwin
+            manylinux: "off"
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: "off"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build abi3 wheel
+        uses: PyO3/maturin-action@86b9d133d34bc1b40018696f782949dac11bd380 # v1.49.4
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          maturin-version: v1.11.5
+          working-directory: native
+          args: --release --locked --compatibility pypi --out ../dist
+          sccache: true
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheel-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/native-v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - name: Create release and upload wheels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" dist/*.whl --clobber
+      - name: Build Python package index
+        run: python scripts/build_simple_index.py dist public "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+
+  deploy-index:
+    if: startsWith(github.ref, 'refs/tags/native-v')
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy package index
+        id: deployment
+        uses: actions/deploy-pages@v4

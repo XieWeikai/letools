@@ -8,7 +8,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from letools import ConversionConfig, compare_datasets, convert, validate_dataset
-from letools._core import file_sizes
+from letools._native import file_sizes
 
 
 def _stats(values: np.ndarray) -> dict[str, list[float] | list[int]]:
@@ -118,7 +118,7 @@ def test_v21_v30_roundtrip(tmp_path: Path) -> None:
     assert compare_datasets(source, roundtrip).equal
 
 
-def test_rust_file_sizes(tmp_path: Path) -> None:
+def test_file_sizes(tmp_path: Path) -> None:
     first = tmp_path / "first"
     second = tmp_path / "second"
     first.write_bytes(b"abc")

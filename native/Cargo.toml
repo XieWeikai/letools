@@ -1,0 +1,15 @@
+[package]
+name = "letools-native"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Optional native acceleration for letools"
+repository = "https://github.com/XieWeikai/letools"
+
+[lib]
+name = "letools_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py39"] }
+rayon = "1.10"

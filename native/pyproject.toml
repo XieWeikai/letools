@@ -1,0 +1,16 @@
+[project]
+name = "letools-native"
+version = "0.1.0"
+description = "Optional native acceleration for letools"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Weikai Xie", email = "xxxweikai@gmail.com" }]
+
+[tool.maturin]
+module-name = "letools_native"
+bindings = "pyo3"
+strip = true
+
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"

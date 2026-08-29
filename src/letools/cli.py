@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from letools.conversion import ConversionConfig, convert
+from letools.doctor import environment_report
 from letools.validation import compare_datasets, validate_dataset
 
 
@@ -41,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     comparison.add_argument("right", type=Path)
     comparison.add_argument("--skip-data", action="store_true")
     comparison.add_argument("--videos", action="store_true")
+    commands.add_parser("doctor", help="Report native and FFmpeg providers")
     return parser
 
 
@@ -66,6 +68,9 @@ def main(argv: list[str] | None = None) -> int:
         report = validate_dataset(args.dataset, deep=args.deep)
         _print(report)
         return 0 if report.valid else 1
+    if args.command == "doctor":
+        print(json.dumps(environment_report(), indent=2))
+        return 0
     report = compare_datasets(
         args.left,
         args.right,

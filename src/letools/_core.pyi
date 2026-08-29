@@ -1,6 +1,0 @@
-from os import PathLike
-
-def file_sizes(paths: list[str | PathLike[str]]) -> list[int]: ...
-def copy_files(
-    files: list[tuple[str | PathLike[str], str | PathLike[str]]],
-) -> list[int]: ...
