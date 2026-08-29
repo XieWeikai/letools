@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "native/**"
+      - "scripts/build_ffmpeg_linux.sh"
       - ".github/workflows/native-wheels.yml"
     tags:
       - "native-v*"
