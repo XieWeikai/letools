@@ -3,6 +3,10 @@ name: Native wheels
 on:
   workflow_dispatch:
   push:
+    branches: [main]
+    paths:
+      - "native/**"
+      - ".github/workflows/native-wheels.yml"
     tags:
       - "native-v*"
 
