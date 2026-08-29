@@ -25,18 +25,25 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: "2_28"
+            features: --features video
+            before_script: source ../scripts/build_ffmpeg_linux.sh
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             manylinux: "2_28"
+            features: ""
+            before_script: ""
           - os: macos-15-intel
             target: x86_64-apple-darwin
             manylinux: "off"
+            features: ""
           - os: macos-15
             target: aarch64-apple-darwin
             manylinux: "off"
+            features: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             manylinux: "off"
+            features: ""
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -48,13 +55,23 @@ jobs:
           manylinux: ${{ matrix.manylinux }}
           maturin-version: v1.11.5
           working-directory: native
-          args: --release --locked --compatibility pypi --out ../dist
+          before-script-linux: ${{ matrix.before_script }}
+          args: --release --locked --compatibility pypi --out ../dist ${{ matrix.features }}
           sccache: true
       - uses: actions/upload-artifact@v6
         with:
           name: wheel-${{ matrix.target }}
           path: dist/*.whl
           if-no-files-found: error
+      - name: Verify bundled FFmpeg wheel imports without library environment
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-test"
+          "$RUNNER_TEMP/wheel-test/bin/pip" install dist/letools_native-*.whl
+          env -u LD_LIBRARY_PATH -u LIBRARY_PATH -u PKG_CONFIG_PATH \
+            "$RUNNER_TEMP/wheel-test/bin/python" -c \
+            'import letools_native as n; assert {"video-packet-digests", "video-concat", "video-split"} <= set(n.build_info()[1]); print(n.build_info())'
 
   release:
     if: startsWith(github.ref, 'refs/tags/native-v')

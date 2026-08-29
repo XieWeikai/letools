@@ -23,7 +23,7 @@ jobs:
       - run: uv run letools doctor
 
   native:
-    name: Native extension
+    name: Native extension (portable)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -38,3 +38,21 @@ jobs:
           uv run letools doctor | grep '"provider": "letools-native"'
       - run: cargo fmt --manifest-path native/Cargo.toml --check
       - run: cargo clippy --manifest-path native/Cargo.toml --locked -- -D warnings
+
+  native-video:
+    name: Native extension (FFmpeg)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.6"
+          enable-cache: true
+      - name: Install FFmpeg development libraries
+        run: sudo apt-get update && sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev pkg-config
+      - run: uv sync --locked --group test --group native-dev
+      - run: uv run maturin develop --manifest-path native/Cargo.toml --locked --features video
+      - run: uv run pytest -q
+      - run: |
+          uv run letools doctor | grep '"video-split"'
+      - run: cargo clippy --manifest-path native/Cargo.toml --locked --features video -- -D warnings

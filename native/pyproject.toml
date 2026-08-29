@@ -5,6 +5,7 @@ description = "Optional native acceleration for letools"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [{ name = "Weikai Xie", email = "xxxweikai@gmail.com" }]
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 
 [tool.maturin]
 module-name = "letools_native"

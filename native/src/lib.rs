@@ -2,7 +2,9 @@ use pyo3::exceptions::PyOSError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(feature = "video")]
+use std::path::Path;
+use std::path::PathBuf;
 
 #[cfg(feature = "video")]
 use ffmpeg_next as ffmpeg;
