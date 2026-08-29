@@ -34,6 +34,7 @@ jobs:
       - run: uv sync --locked --group test --group native-dev
       - run: uv run maturin develop --manifest-path native/Cargo.toml --locked
       - run: uv run pytest -q
-      - run: uv run letools doctor | grep '"provider": "letools-native"'
+      - run: |
+          uv run letools doctor | grep '"provider": "letools-native"'
       - run: cargo fmt --manifest-path native/Cargo.toml --check
       - run: cargo clippy --manifest-path native/Cargo.toml --locked -- -D warnings
