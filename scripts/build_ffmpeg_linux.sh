@@ -11,9 +11,9 @@ configure_libclang() {
     library=$(find /usr -name 'libclang.so*' -print -quit 2>/dev/null || true)
     if [[ -z "${library}" ]]; then
         if command -v dnf >/dev/null; then
-            dnf install -y clang-libs
+            dnf install -y clang
         elif command -v yum >/dev/null; then
-            yum install -y clang-libs
+            yum install -y clang
         else
             echo "A libclang package is required to build ffmpeg-sys-next" >&2
             return 1
