@@ -10,7 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from letools._core import file_sizes
-from letools._arrow import canonical_data_schema, cast_data_table
+from letools._arrow import canonical_data_schema, cast_data_table, normalize_feature_shapes
 from letools._io import write_json
 from letools._stats import aggregate_episode_stats, flatten_stats
 from letools._video import concatenate_videos
@@ -63,6 +63,7 @@ class LeRobotV30Backend(DatasetBackend):
             else None
         )
         info["fps"] = int(source.metadata.fps)
+        normalize_feature_shapes(source, info["features"])
         for feature in info["features"].values():
             if feature["dtype"] != "video":
                 feature["fps"] = source.metadata.fps

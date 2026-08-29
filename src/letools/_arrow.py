@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pyarrow as pa
 
 from letools.plugins import DatasetSource
@@ -55,3 +57,45 @@ def cast_data_table(table: pa.Table, schema: pa.Schema) -> pa.Table:
     if table.schema.equals(schema, check_metadata=False):
         return table.replace_schema_metadata(schema.metadata)
     return table.cast(schema)
+
+
+def _nested_value_shape(value: Any) -> tuple[int, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    if not value:
+        raise ValueError("Cannot infer a feature shape from an empty list.")
+
+    child_shapes = {_nested_value_shape(item) for item in value}
+    if len(child_shapes) != 1:
+        raise ValueError("Cannot infer a feature shape from a ragged list.")
+    return (len(value), *child_shapes.pop())
+
+
+def normalize_feature_shapes(source: DatasetSource, features: dict[str, dict[str, Any]]) -> None:
+    """Correct redundant leading singleton dimensions using actual episode data."""
+    table = source.read_episode(source.episodes[0])
+    for key, feature in features.items():
+        if feature.get("dtype") in {"image", "video"} or key not in table.column_names:
+            continue
+
+        value = next((item.as_py() for item in table[key] if item.is_valid), None)
+        if value is None:
+            continue
+
+        value_shape = _nested_value_shape(value)
+        actual_shape = value_shape or (1,)
+        declared_shape = tuple(feature["shape"])
+        if declared_shape == actual_shape:
+            continue
+
+        prefix_length = len(declared_shape) - len(actual_shape)
+        prefix = declared_shape[:prefix_length]
+        suffix = declared_shape[prefix_length:]
+        if prefix_length > 0 and all(size == 1 for size in prefix) and suffix == actual_shape:
+            feature["shape"] = list(actual_shape)
+            continue
+
+        raise ValueError(
+            f"Feature {key!r} declares shape {declared_shape}, but Parquet data has shape "
+            f"{actual_shape}. Only redundant leading singleton dimensions can be corrected."
+        )

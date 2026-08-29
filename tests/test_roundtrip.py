@@ -82,8 +82,8 @@ def make_v21(root: Path) -> Path:
         "data_path": "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet",
         "video_path": None,
         "features": {
-            "observation.state": {"dtype": "float32", "shape": [2]},
-            "action": {"dtype": "float32", "shape": [2]},
+            "observation.state": {"dtype": "float32", "shape": [1, 2]},
+            "action": {"dtype": "float32", "shape": [1, 2]},
             "timestamp": {"dtype": "float32", "shape": [1], "names": None},
             "frame_index": {"dtype": "int64", "shape": [1], "names": None},
             "episode_index": {"dtype": "int64", "shape": [1], "names": None},
@@ -106,9 +106,15 @@ def test_v21_v30_roundtrip(tmp_path: Path) -> None:
     config = ConversionConfig(workers=2)
     convert(source, v30, "v3.0", config=config)
     assert validate_dataset(v30, deep=True).valid
+    v30_info = json.loads((v30 / "meta/info.json").read_text())
+    assert v30_info["features"]["observation.state"]["shape"] == [2]
+    assert v30_info["features"]["action"]["shape"] == [2]
     assert compare_datasets(source, v30).equal
     convert(v30, roundtrip, "v2.1", config=config)
     assert validate_dataset(roundtrip, deep=True).valid
+    roundtrip_info = json.loads((roundtrip / "meta/info.json").read_text())
+    assert roundtrip_info["features"]["observation.state"]["shape"] == [2]
+    assert roundtrip_info["features"]["action"]["shape"] == [2]
     assert compare_datasets(source, roundtrip).equal
 
 

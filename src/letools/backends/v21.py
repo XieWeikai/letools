@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from letools._arrow import normalize_feature_shapes
 from letools._io import write_json, write_jsonl
 from letools._video import split_video
 from letools.backends.base import DatasetBackend
@@ -32,6 +33,7 @@ class LeRobotV21Backend(DatasetBackend):
             if source.metadata.video_keys
             else None
         )
+        normalize_feature_shapes(source, info["features"])
         for feature in info["features"].values():
             if feature["dtype"] != "video":
                 feature.pop("fps", None)

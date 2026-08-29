@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -10,7 +11,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from letools._arrow import canonical_data_schema, cast_data_table
+from letools._arrow import canonical_data_schema, cast_data_table, normalize_feature_shapes
 from letools._video import packet_digests, video_duration
 from letools.model import VideoSlice
 from letools.plugins import DatasetSource, open_dataset
@@ -131,7 +132,9 @@ def validate_dataset(path: str | Path, *, deep: bool = False) -> ValidationRepor
     )
 
 
-def _normalized_features(features: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _normalized_features(source: DatasetSource) -> dict[str, dict[str, Any]]:
+    features = copy.deepcopy(source.metadata.features)
+    normalize_feature_shapes(source, features)
     normalized: dict[str, dict[str, Any]] = {}
     for key, value in features.items():
         item = dict(value)
@@ -187,7 +190,7 @@ def compare_datasets(
     errors: list[str] = []
     if lhs.metadata.fps != rhs.metadata.fps:
         errors.append(f"fps differs: {lhs.metadata.fps} != {rhs.metadata.fps}")
-    if _normalized_features(lhs.metadata.features) != _normalized_features(rhs.metadata.features):
+    if _normalized_features(lhs) != _normalized_features(rhs):
         errors.append("feature schemas differ")
     if lhs.metadata.tasks != rhs.metadata.tasks:
         errors.append("tasks differ")
