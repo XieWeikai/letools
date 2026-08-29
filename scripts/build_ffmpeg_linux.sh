@@ -30,6 +30,7 @@ build_ffmpeg() {
             --disable-debug \
             --disable-autodetect \
             --disable-everything \
+            --disable-x86asm \
             --enable-avcodec \
             --enable-avformat \
             --enable-avutil \
