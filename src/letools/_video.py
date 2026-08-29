@@ -133,6 +133,7 @@ def packet_digests(slices: Sequence[VideoSlice]) -> list[str]:
     if not slices:
         return []
     source = av.open(str(slices[0].path), mode="r")
+    time_base = float(source.streams.video[0].time_base)
     digests = [hashlib.sha256() for _ in slices]
     index = 0
     try:
@@ -140,7 +141,7 @@ def packet_digests(slices: Sequence[VideoSlice]) -> list[str]:
             if packet.dts is None:
                 continue
             value = packet.pts if packet.pts is not None else packet.dts
-            timestamp = float(value * packet.time_base)
+            timestamp = value * time_base
             while index + 1 < len(slices) and timestamp >= slices[index].end - 1e-7:
                 index += 1
             if slices[index].start - 1e-7 <= timestamp < slices[index].end - 1e-7:
