@@ -8,7 +8,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class ConversionConfig:
     workers: int = max(1, min(8, os.cpu_count() or 1))
-    video_workers: int = 1
+    video_workers: int = max(1, min(3, os.cpu_count() or 1))
     data_file_size_mb: int = 100
     video_file_size_mb: int = 200
     chunks_size: int = 1000
