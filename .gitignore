@@ -13,4 +13,6 @@ target/
 *.so
 
 # Local self-improvement experiments and reports
-self-improve/
+self-improve/*
+!self-improve/PROTOCOL.md
+!self-improve/SUMMARY.md
