@@ -21,6 +21,9 @@ from letools.planner.types import (
 from letools.plugins import DatasetSource, open_dataset
 
 
+_PLANNER_ALGORITHM_VERSION = 3
+
+
 def _normalize_version(version: str) -> str:
     value = version.lower().removeprefix("lerobot-").removeprefix("v")
     if value in {"2.1", "21"}:
@@ -44,6 +47,7 @@ def _fingerprint_payload(
     destination = asdict(destination_storage)
     payload = {
         "schema": 1,
+        "planner_algorithm": _PLANNER_ALGORITHM_VERSION,
         "target": target_version,
         "resources": {
             "cpus": resource["effective_cpus"],

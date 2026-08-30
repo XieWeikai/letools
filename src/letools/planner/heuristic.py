@@ -15,6 +15,7 @@ DATA_TARGETS_MB = (32, 64, 100, 128, 200, 256, 512)
 VIDEO_TARGETS_MB = (64, 100, 200, 256, 400, 800)
 WORKER_LATTICE = (1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96)
 _MIB = 1024**2
+_DATA_TASK_OVERHEAD_BYTES = 16 * _MIB
 
 
 @dataclass(frozen=True)
@@ -41,17 +42,45 @@ def _target_for_parallelism(
     total_bytes: int,
     workers: int,
     preferred: int,
+    tasks_per_worker: int = 2,
+    maximize_tasks_when_insufficient: bool = False,
 ) -> int:
     if total_bytes <= 0:
         return preferred
-    required_tasks = max(1, workers * 2)
+    required_tasks = max(1, workers * tasks_per_worker)
     feasible = [
         target
         for target in candidates
         if math.ceil(total_bytes / (target * _MIB)) >= required_tasks
     ]
     pool = feasible or list(candidates)
+    if not feasible and maximize_tasks_when_insufficient:
+        return min(candidates)
     return min(pool, key=lambda target: (abs(target - preferred), target))
+
+
+def _target_for_balanced_groups(
+    candidates: tuple[int, ...],
+    total_bytes: int,
+    workers: int,
+    preferred: int,
+) -> int:
+    if total_bytes <= 0:
+        return preferred
+
+    def score(target_mb: int) -> tuple[int, int, int]:
+        target_bytes = target_mb * _MIB
+        full_groups, remainder = divmod(total_bytes, target_bytes)
+        groups = [target_bytes] * full_groups
+        if remainder:
+            groups.append(remainder)
+        loads = [0] * max(1, workers)
+        for group_bytes in groups:
+            worker = min(range(len(loads)), key=loads.__getitem__)
+            loads[worker] += group_bytes + _DATA_TASK_OVERHEAD_BYTES
+        return max(loads), len(groups), abs(target_mb - preferred)
+
+    return min(candidates, key=score)
 
 
 def _memory_worker_cap(
@@ -61,7 +90,7 @@ def _memory_worker_cap(
 ) -> tuple[int, int]:
     usable = int(resources.effective_memory_bytes * 0.85)
     largest_input = dataset.parquet_uncompressed_bytes.p95
-    per_worker = max(target_mb * _MIB, largest_input) * 3 + 64 * _MIB
+    per_worker = max(target_mb * _MIB, largest_input) * 2 + 64 * _MIB
     workers = max(1, usable // max(1, per_worker))
     return workers, per_worker
 
@@ -101,12 +130,34 @@ def choose_heuristic(
     if target_version == "v3.0":
         preferred_data_target = overrides.data_file_size_mb or 100
         provisional_workers = overrides.workers or min(cpu_limit, dataset.episodes, 8)
-        data_target = overrides.data_file_size_mb or _target_for_parallelism(
+        data_target = overrides.data_file_size_mb or _target_for_balanced_groups(
             DATA_TARGETS_MB,
             dataset.parquet_uncompressed_bytes.total,
             provisional_workers,
             preferred_data_target,
         )
+        workers = provisional_workers
+        for _ in range(4):
+            data_tasks = max(
+                1,
+                math.ceil(dataset.parquet_uncompressed_bytes.total / (data_target * _MIB)),
+            )
+            memory_cap, per_worker_memory = _memory_worker_cap(resources, dataset, data_target)
+            if overrides.workers and overrides.workers > memory_cap:
+                raise ValueError("Data workers exceed the planner's memory safety limit")
+            workers = overrides.workers or min(cpu_limit, data_tasks, memory_cap, 8)
+            workers = max(1, workers)
+            if overrides.data_file_size_mb is not None:
+                break
+            adjusted_target = _target_for_balanced_groups(
+                DATA_TARGETS_MB,
+                dataset.parquet_uncompressed_bytes.total,
+                workers,
+                preferred_data_target,
+            )
+            if adjusted_target == data_target:
+                break
+            data_target = adjusted_target
         data_tasks = max(
             1,
             math.ceil(dataset.parquet_uncompressed_bytes.total / (data_target * _MIB)),
@@ -118,9 +169,11 @@ def choose_heuristic(
         workers = max(1, workers)
         video_target = overrides.video_file_size_mb or _target_for_parallelism(
             VIDEO_TARGETS_MB,
-            dataset.video_physical_bytes.total,
+            dataset.video_physical_bytes.total // max(1, dataset.cameras),
             min(cpu_limit, 3 if network_io else 8),
             200,
+            tasks_per_worker=3,
+            maximize_tasks_when_insufficient=True,
         )
         video_tasks = (
             max(
@@ -149,7 +202,7 @@ def choose_heuristic(
         video_workers = 1
     elif network_io:
         video_workers = min(cpu_limit, max(1, video_tasks), 3)
-        reasons.append("network storage caps initial video concurrency at three")
+        reasons.append("network storage starts video calibration at three workers")
     else:
         video_workers = min(cpu_limit, max(1, video_tasks), 8)
 
