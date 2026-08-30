@@ -9,7 +9,7 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from letools.model import DatasetMetadata, Episode, VideoSlice
+from letools.model import DatasetMetadata, Episode, EpisodeDataProfile, VideoSlice
 from letools.plugins.base import DatasetSource
 
 
@@ -153,6 +153,21 @@ class LeRobotV30Source(DatasetSource):
             self._local.path = episode.data_path
             self._local.table = pq.read_table(episode.data_path)
         return self._local.table.slice(episode.data_start, episode.length)
+
+    def data_profile(self, episode: Episode) -> EpisodeDataProfile:
+        """Scale a shared v3 shard profile to this episode's row contribution."""
+
+        resource = super().data_profile(episode)
+        rows = max(1, resource.resource_rows)
+        return EpisodeDataProfile(
+            locality_key=resource.locality_key,
+            episode_logical_bytes=max(
+                1, round(resource.resource_logical_bytes * episode.length / rows)
+            ),
+            resource_logical_bytes=resource.resource_logical_bytes,
+            resource_physical_bytes=resource.resource_physical_bytes,
+            resource_rows=resource.resource_rows,
+        )
 
 
 def open_dataset(root: str | Path) -> DatasetSource:

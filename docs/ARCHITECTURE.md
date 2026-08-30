@@ -90,21 +90,24 @@ type, splits, frame and episode totals, the task table, and the original
 Describes one logical episode without requiring one physical file per episode:
 
 - `index`, `length`, `tasks`, and per-feature `stats` describe semantics;
-- `data_path`, `data_start`, and `data_end` locate its Arrow rows;
-- `videos` maps each video feature to a `VideoSlice`.
+- `data_path`, `data_start`, and `data_end` are compatibility references
+  used by path-based sources;
+- `videos` maps each video feature to a `VideoSlice` or `FrameSequence`.
 
 For v2.1, an episode normally owns one Parquet file and each video slice begins
 at zero. For v3.0, multiple episodes can refer to one Parquet/video file using
 row and timestamp ranges. Backends therefore do not need version-specific read
 logic.
 
-### Arrow tables and video slices
+### Arrow tables and media inputs
 
 `DatasetSource.read_episode()` returns a `pyarrow.Table` containing exactly the
 episode's rows. Arrow is the in-process point-batch representation; individual
-Python frame objects are deliberately avoided. `VideoSlice` carries only a
-path and start/end seconds. Encoded packets and FFmpeg contexts remain inside
-the video primitive that owns the whole operation.
+Python row objects are deliberately avoided. `VideoSlice` carries only a path
+and start/end seconds. `FrameSequence` exposes encoded image bytes in batches,
+which lets HDF5 and image-backed sources avoid one plugin callback per frame.
+Encoded packets, decoded frames, and FFmpeg contexts remain inside the media
+primitive that owns the whole operation.
 
 ## 4. Module ownership and boundaries
 
@@ -132,7 +135,7 @@ the video primitive that owns the whole operation.
 
 ## 5. Source plugin contract
 
-`DatasetSource` exposes three attributes and one required method:
+`DatasetSource` exposes three attributes and one required data method:
 
 ```python
 root: pathlib.Path
@@ -147,14 +150,29 @@ batch shared-file reads. The built-in v3 source instead keeps a thread-local
 table cache: consecutive episodes in the same worker and Parquet shard reuse
 one loaded table.
 
+Backends and planner code access physical resources through three capability
+methods:
+
+```python
+def data_profile(self, episode: Episode) -> EpisodeDataProfile: ...
+def media_input(self, episode: Episode, key: str) -> MediaInput: ...
+def media_profile(self, episode: Episode, key: str) -> MediaProfile: ...
+```
+
+`data_profile()` separates one episode's logical output contribution from a
+possibly shared resource's logical and physical sizes. Both profiles carry a
+stable locality key so consumers can group work without interpreting paths or
+container internals. The default implementations adapt path-based Parquet and
+MP4 sources and cache resource inspection. Other formats override them.
+
 `open_dataset()` reads `meta/info.json` and dispatches only `v2.1` and `v3.0`.
 A custom source is passed as an object to `convert()` or `plan_conversion()`;
 there is currently no CLI registration mechanism.
 
 Source implementations must provide stable episode order, contiguous indices
 starting at zero, accurate lengths and totals, consistent Arrow schemas, and a
-slice for every declared video key. They read source data only and must not
-write the destination.
+media input and profile for every declared video key. They read source data
+only and must not write the destination.
 
 ## 6. Backend contract
 
@@ -300,6 +318,9 @@ permit semantically equivalent physical layouts.
 
 When adding a source format, prefer a new `DatasetSource` that maps it into the
 existing model. Do not teach both LeRobot backends how to parse that format.
+The plugin owns source-specific size accounting and locality; the planner and
+backends consume only source profiles. Batch frame reads prevent high-latency
+sources from forcing one Python callback per encoded frame.
 Promote a repeated operation into a reusable primitive only when it removes
 meaningful duplication or creates a measurable hot-path boundary.
 

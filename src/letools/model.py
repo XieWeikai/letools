@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,35 @@ import pyarrow as pa
 
 
 @dataclass(frozen=True)
+class EpisodeDataProfile:
+    """Size and locality information used without interpreting source storage.
+
+    episode_logical_bytes estimates the Arrow payload contributed by one
+    episode to an output group. Resource sizes describe a shared source object
+    once, so multiple episodes may return the same locality_key.
+    """
+
+    locality_key: str
+    episode_logical_bytes: int
+    resource_logical_bytes: int
+    resource_physical_bytes: int
+    resource_rows: int
+
+
+@dataclass(frozen=True)
+class MediaProfile:
+    """Planner-facing description of one media input."""
+
+    locality_key: str
+    input_bytes: int
+    kind: str
+    requires_encoding: bool
+
+
+@dataclass(frozen=True)
 class VideoSlice:
+    """A timestamp range in an already encoded video resource."""
+
     path: Path
     start: float
     end: float
@@ -18,8 +47,37 @@ class VideoSlice:
         return self.end - self.start
 
 
+class FrameSequence(ABC):
+    """Batch-oriented source of encoded image frames.
+
+    Batches keep the plugin boundary outside the per-frame encoding loop and
+    allow an implementation to amortize source open costs.
+    """
+
+    frame_count: int
+    width: int
+    height: int
+    encoded_format: str
+    estimated_size_bytes: int
+
+    @abstractmethod
+    def read_batch(self, start: int, stop: int) -> tuple[bytes, ...]:
+        """Return encoded frames in the half-open interval [start, stop)."""
+
+        raise NotImplementedError
+
+
+MediaInput = VideoSlice | FrameSequence
+
+
 @dataclass(frozen=True)
 class Episode:
+    """Format-neutral semantic unit consumed by LeRobot backends.
+
+    data_path and videos remain for source compatibility. Consumers use
+    DatasetSource methods so non-Parquet plugins can provide other storage.
+    """
+
     index: int
     length: int
     tasks: tuple[str, ...]
@@ -27,7 +85,7 @@ class Episode:
     data_path: Path
     data_start: int = 0
     data_end: int | None = None
-    videos: dict[str, VideoSlice] = field(default_factory=dict)
+    videos: dict[str, MediaInput] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

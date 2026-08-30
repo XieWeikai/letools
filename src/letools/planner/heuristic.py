@@ -89,7 +89,7 @@ def _memory_worker_cap(
     target_mb: int,
 ) -> tuple[int, int]:
     usable = int(resources.effective_memory_bytes * 0.85)
-    largest_input = dataset.parquet_uncompressed_bytes.p95
+    largest_input = dataset.data_logical_bytes.p95
     per_worker = max(target_mb * _MIB, largest_input) * 2 + 64 * _MIB
     workers = max(1, usable // max(1, per_worker))
     return workers, per_worker
@@ -132,7 +132,7 @@ def choose_heuristic(
         provisional_workers = overrides.workers or min(cpu_limit, dataset.episodes, 8)
         data_target = overrides.data_file_size_mb or _target_for_balanced_groups(
             DATA_TARGETS_MB,
-            dataset.parquet_uncompressed_bytes.total,
+            dataset.data_logical_bytes.total,
             provisional_workers,
             preferred_data_target,
         )
@@ -140,7 +140,7 @@ def choose_heuristic(
         for _ in range(4):
             data_tasks = max(
                 1,
-                math.ceil(dataset.parquet_uncompressed_bytes.total / (data_target * _MIB)),
+                math.ceil(dataset.data_logical_bytes.total / (data_target * _MIB)),
             )
             memory_cap, per_worker_memory = _memory_worker_cap(resources, dataset, data_target)
             if overrides.workers and overrides.workers > memory_cap:
@@ -151,7 +151,7 @@ def choose_heuristic(
                 break
             adjusted_target = _target_for_balanced_groups(
                 DATA_TARGETS_MB,
-                dataset.parquet_uncompressed_bytes.total,
+                dataset.data_logical_bytes.total,
                 workers,
                 preferred_data_target,
             )
@@ -160,7 +160,7 @@ def choose_heuristic(
             data_target = adjusted_target
         data_tasks = max(
             1,
-            math.ceil(dataset.parquet_uncompressed_bytes.total / (data_target * _MIB)),
+            math.ceil(dataset.data_logical_bytes.total / (data_target * _MIB)),
         )
         memory_cap, per_worker_memory = _memory_worker_cap(resources, dataset, data_target)
         if overrides.workers and overrides.workers > memory_cap:
@@ -171,7 +171,7 @@ def choose_heuristic(
         video_tasks = (
             max(
                 dataset.cameras,
-                math.ceil(dataset.video_physical_bytes.total / (video_target * _MIB)),
+                math.ceil(dataset.media_input_bytes.total / (video_target * _MIB)),
             )
             if dataset.video_files
             else 0
@@ -181,7 +181,7 @@ def choose_heuristic(
         video_target = None
         data_tasks = max(1, dataset.data_files)
         video_tasks = dataset.video_files
-        per_worker_memory = dataset.parquet_uncompressed_bytes.p95 * 2 + 64 * _MIB
+        per_worker_memory = dataset.data_logical_bytes.p95 * 2 + 64 * _MIB
         usable = int(resources.effective_memory_bytes * 0.85)
         memory_cap = max(1, usable // max(1, per_worker_memory))
         if overrides.workers and overrides.workers > memory_cap:
@@ -207,13 +207,13 @@ def choose_heuristic(
         if network_io:
             video_target = _target_for_balanced_groups(
                 VIDEO_TARGETS_MB,
-                dataset.video_physical_bytes.total,
+                dataset.media_input_bytes.total,
                 video_workers,
                 200,
             )
         video_tasks = max(
             dataset.cameras,
-            math.ceil(dataset.video_physical_bytes.total / (video_target * _MIB)),
+            math.ceil(dataset.media_input_bytes.total / (video_target * _MIB)),
         )
 
     if overrides.workers is not None:

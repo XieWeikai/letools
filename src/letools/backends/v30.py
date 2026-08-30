@@ -10,26 +10,15 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from letools._native import file_sizes
 from letools._arrow import canonical_data_schema, cast_data_table, normalize_feature_shapes
 from letools._io import write_json
 from letools._stats import aggregate_episode_stats, flatten_stats
 from letools._video import concatenate_videos
 from letools.backends.base import DatasetBackend
 from letools.conversion_types import ConversionConfig
-from letools.model import Episode
+from letools.model import Episode, VideoSlice
 from letools.plugins import DatasetSource
 from letools.telemetry import StageRecorder
-
-
-def _parquet_size_mb(path: Path) -> float:
-    metadata = pq.read_metadata(path)
-    size = sum(
-        metadata.row_group(row_group).column(column).total_uncompressed_size
-        for row_group in range(metadata.num_row_groups)
-        for column in range(metadata.row_group(row_group).num_columns)
-    )
-    return size / (1024**2)
 
 
 def _groups_by_size(items: list[Episode], sizes: list[float], limit: int) -> list[list[Episode]]:
@@ -91,7 +80,10 @@ class LeRobotV30Backend(DatasetBackend):
         recorder.add("metadata_prepare", time.perf_counter() - metadata_started)
 
         data_plan_started = time.perf_counter()
-        episode_sizes = [_parquet_size_mb(episode.data_path) for episode in source.episodes]
+        episode_sizes = [
+            source.data_profile(episode).episode_logical_bytes / (1024**2)
+            for episode in source.episodes
+        ]
         data_groups = _groups_by_size(list(source.episodes), episode_sizes, config.data_file_size_mb)
         data_schema = canonical_data_schema(source)
         rows: dict[int, dict[str, Any]] = {}
@@ -132,15 +124,20 @@ class LeRobotV30Backend(DatasetBackend):
         for video_key in source.metadata.video_keys:
             video_plan_started = time.perf_counter()
             episodes = list(source.episodes)
-            paths = [episode.videos[video_key].path for episode in episodes]
-            sizes = [size / (1024**2) for size in file_sizes(paths)]
+            sizes = [
+                source.media_profile(episode, video_key).input_bytes / (1024**2)
+                for episode in episodes
+            ]
             video_groups = _groups_by_size(episodes, sizes, config.video_file_size_mb)
             jobs = []
             for file_number, group in enumerate(video_groups):
                 chunk_index, file_index = divmod(file_number, config.chunks_size)
                 elapsed = 0.0
                 for episode in group:
-                    duration = episode.videos[video_key].duration
+                    media = source.media_input(episode, video_key)
+                    if not isinstance(media, VideoSlice):
+                        raise TypeError("v3.0 backend does not yet encode frame sequences")
+                    duration = media.duration
                     rows[episode.index].update(
                         {
                             f"videos/{video_key}/chunk_index": chunk_index,
@@ -153,7 +150,10 @@ class LeRobotV30Backend(DatasetBackend):
                 output = destination / info["video_path"].format(
                     video_key=video_key, chunk_index=chunk_index, file_index=file_index
                 )
-                jobs.append(([episode.videos[video_key].path for episode in group], output))
+                inputs = [source.media_input(episode, video_key) for episode in group]
+                if not all(isinstance(media, VideoSlice) for media in inputs):
+                    raise TypeError("v3.0 backend does not yet encode frame sequences")
+                jobs.append(([media.path for media in inputs], output))
             video_plan_elapsed += time.perf_counter() - video_plan_started
             video_started = time.perf_counter()
             with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:

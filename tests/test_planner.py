@@ -51,7 +51,7 @@ def test_read_only_plan_profiles_dataset_and_storage(tmp_path) -> None:
     assert plan.confidence == "heuristic"
     assert plan.dataset.episodes == 3
     assert plan.dataset.frames == 9
-    assert plan.dataset.parquet_uncompressed_bytes.total > 0
+    assert plan.dataset.data_logical_bytes.total > 0
     assert plan.source_storage.filesystem == inspect_storage(source).filesystem
     assert 1 <= plan.workers <= plan.resources.effective_cpus
     assert plan.data_file_size_mb is not None
@@ -112,8 +112,8 @@ def test_heuristic_converges_worker_and_target_under_memory_limit(tmp_path) -> N
         dataset,
         episodes=3457,
         data_files=3457,
-        parquet_uncompressed_bytes=replace(
-            dataset.parquet_uncompressed_bytes,
+        data_logical_bytes=replace(
+            dataset.data_logical_bytes,
             total=316_819_585,
         ),
     )

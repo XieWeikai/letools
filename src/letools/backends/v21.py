@@ -13,7 +13,7 @@ from letools._io import write_json, write_jsonl
 from letools._video import split_video
 from letools.backends.base import DatasetBackend
 from letools.conversion_types import ConversionConfig
-from letools.model import Episode
+from letools.model import Episode, VideoSlice
 from letools.plugins import DatasetSource
 from letools.telemetry import StageRecorder
 
@@ -71,9 +71,9 @@ class LeRobotV21Backend(DatasetBackend):
         recorder.add("metadata_prepare", time.perf_counter() - metadata_started)
 
         data_plan_started = time.perf_counter()
-        data_groups: dict[Path, list[Episode]] = defaultdict(list)
+        data_groups: dict[str, list[Episode]] = defaultdict(list)
         for episode in source.episodes:
-            data_groups[episode.data_path].append(episode)
+            data_groups[source.data_profile(episode).locality_key].append(episode)
         recorder.add("data_plan", time.perf_counter() - data_plan_started)
 
         def write_data_group(group: list[Episode]) -> None:
@@ -96,21 +96,23 @@ class LeRobotV21Backend(DatasetBackend):
         video_plan_started = time.perf_counter()
         jobs = []
         for video_key in source.metadata.video_keys:
-            groups: dict[Path, list[tuple[Episode, Path]]] = defaultdict(list)
+            groups: dict[str, list[tuple[Episode, Path]]] = defaultdict(list)
             for episode in source.episodes:
                 target = destination / info["video_path"].format(
                     episode_chunk=episode.index // config.chunks_size,
                     episode_index=episode.index,
                     video_key=video_key,
                 )
-                groups[episode.videos[video_key].path].append((episode, target))
-            for path, group in groups.items():
-                jobs.append(
-                    (
-                        path,
-                        [(episode.videos[video_key], target) for episode, target in group],
-                    )
-                )
+                locality = source.media_profile(episode, video_key).locality_key
+                groups[locality].append((episode, target))
+            for group in groups.values():
+                inputs = [
+                    (source.media_input(episode, video_key), target)
+                    for episode, target in group
+                ]
+                if not all(isinstance(media, VideoSlice) for media, _ in inputs):
+                    raise TypeError("v2.1 backend does not yet encode frame sequences")
+                jobs.append((inputs[0][0].path, inputs))
         recorder.add("video_plan", time.perf_counter() - video_plan_started)
         video_started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:

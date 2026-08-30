@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 
 from letools._arrow import canonical_data_schema, cast_data_table
 from letools._video import concatenate_videos, split_video
+from letools.model import VideoSlice
 from letools.planner.heuristic import (
     VIDEO_TARGETS_MB,
     HeuristicChoice,
@@ -63,27 +64,21 @@ def _group_by_limit(items: list, sizes: list[int], limit_bytes: int) -> list[lis
     return groups
 
 
-def _parquet_uncompressed(path: Path) -> int:
-    metadata = pq.read_metadata(path)
-    return sum(
-        metadata.row_group(row_group).column(column).total_uncompressed_size
-        for row_group in range(metadata.num_row_groups)
-        for column in range(metadata.row_group(row_group).num_columns)
-    )
-
-
 def _v30_data_jobs(
     source: DatasetSource,
     target_mb: int,
 ) -> list[_Job]:
     episodes = list(source.episodes)
-    sizes = [_parquet_uncompressed(episode.data_path) for episode in episodes]
+    sizes = [source.data_profile(episode).episode_logical_bytes for episode in episodes]
     groups = _group_by_limit(episodes, sizes, target_mb * _MIB)
     schema = canonical_data_schema(source)
     jobs: list[_Job] = []
     for group in groups:
         group_tuple = tuple(group)
-        input_bytes = sum(episode.data_path.stat().st_size for episode in group_tuple)
+        input_bytes = sum(
+            source.data_profile(episode).resource_physical_bytes
+            for episode in group_tuple
+        )
 
         def run(root: Path, index: int, selected=group_tuple) -> None:
             tables = [cast_data_table(table, schema) for table in source.read_episodes(selected)]
@@ -95,12 +90,13 @@ def _v30_data_jobs(
 
 
 def _v21_data_jobs(source: DatasetSource) -> list[_Job]:
-    groups: dict[Path, list] = defaultdict(list)
+    groups: dict[str, list] = defaultdict(list)
     for episode in source.episodes:
-        groups[episode.data_path].append(episode)
+        groups[source.data_profile(episode).locality_key].append(episode)
     jobs: list[_Job] = []
-    for path, episodes in groups.items():
+    for episodes in groups.values():
         selected = tuple(episodes)
+        input_bytes = source.data_profile(selected[0]).resource_physical_bytes
 
         def run(root: Path, index: int, group=selected) -> None:
             directory = root / f"data-{index:04d}"
@@ -108,7 +104,7 @@ def _v21_data_jobs(source: DatasetSource) -> list[_Job]:
             for episode in group:
                 pq.write_table(source.read_episode(episode), directory / f"{episode.index}.parquet")
 
-        jobs.append((path.stat().st_size, run))
+        jobs.append((input_bytes, run))
     return jobs
 
 
@@ -118,11 +114,16 @@ def _v30_video_jobs(source: DatasetSource, target_mb: int = 32) -> list[_Job]:
     episodes = list(source.episodes)
     jobs: list[_Job] = []
     for key in source.metadata.video_keys:
-        sizes = [episode.videos[key].path.stat().st_size for episode in episodes]
+        sizes = [source.media_profile(episode, key).input_bytes for episode in episodes]
         groups = _group_by_limit(episodes, sizes, target_mb * _MIB)
         for group in groups:
-            paths = tuple(episode.videos[key].path for episode in group)
-            input_bytes = sum(path.stat().st_size for path in paths)
+            media = tuple(source.media_input(episode, key) for episode in group)
+            if not all(isinstance(item, VideoSlice) for item in media):
+                raise TypeError("video calibration does not yet encode frame sequences")
+            paths = tuple(item.path for item in media)
+            input_bytes = sum(
+                source.media_profile(episode, key).input_bytes for episode in group
+            )
 
             def run(root: Path, index: int, inputs=paths) -> None:
                 concatenate_videos(inputs, root / f"video-{index:04d}.mp4")
@@ -136,11 +137,19 @@ def _v21_video_jobs(source: DatasetSource) -> list[_Job]:
         return []
     jobs: list[_Job] = []
     for key in source.metadata.video_keys:
-        groups: dict[Path, list] = defaultdict(list)
+        groups: dict[str, list] = defaultdict(list)
         for episode in source.episodes:
-            groups[episode.videos[key].path].append(episode)
-        for path, episodes in groups.items():
-            selected = tuple((episode.videos[key], episode.index) for episode in episodes)
+            locality = source.media_profile(episode, key).locality_key
+            groups[locality].append(episode)
+        for episodes in groups.values():
+            selected = tuple(
+                (source.media_input(episode, key), episode.index)
+                for episode in episodes
+            )
+            if not all(isinstance(media, VideoSlice) for media, _ in selected):
+                raise TypeError("video calibration does not yet encode frame sequences")
+            path = selected[0][0].path
+            input_bytes = source.media_profile(episodes[0], key).input_bytes
 
             def run(root: Path, index: int, slices=selected, source_path=path) -> None:
                 directory = root / f"video-{index:04d}"
@@ -149,7 +158,7 @@ def _v21_video_jobs(source: DatasetSource) -> list[_Job]:
                     [(video_slice, directory / f"{episode_index}.mp4") for video_slice, episode_index in slices],
                 )
 
-            jobs.append((path.stat().st_size, run))
+            jobs.append((input_bytes, run))
     return jobs
 
 
@@ -281,16 +290,19 @@ def calibrate_workers(
 ) -> tuple[HeuristicChoice, tuple[CalibrationMeasurement, ...]]:
     if not options.enabled:
         return choice, ()
-    data_paths = {
-        episode.data_path: episode.data_path.stat().st_size for episode in source.episodes
-    }
-    video_paths = {
-        video.path: video.path.stat().st_size
+    data_resources = {
+        source.data_profile(episode).locality_key:
+            source.data_profile(episode).resource_physical_bytes
         for episode in source.episodes
-        for video in episode.videos.values()
     }
-    data_bytes = sum(data_paths.values())
-    video_bytes = sum(video_paths.values())
+    media_resources = {
+        source.media_profile(episode, key).locality_key:
+            source.media_profile(episode, key).input_bytes
+        for episode in source.episodes
+        for key in source.metadata.video_keys
+    }
+    data_bytes = sum(data_resources.values())
+    video_bytes = sum(media_resources.values())
     total_bytes = data_bytes + video_bytes
     if total_bytes < 64 * _MIB or (not video_bytes and data_bytes < 512 * _MIB):
         return choice, ()

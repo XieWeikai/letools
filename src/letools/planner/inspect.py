@@ -7,9 +7,6 @@ import socket
 from collections import Counter
 from pathlib import Path
 
-import pyarrow.parquet as pq
-
-from letools._native import file_sizes
 from letools.planner.types import DatasetProfile, Distribution, ResourceProfile, StorageProfile
 from letools.plugins import DatasetSource
 
@@ -221,33 +218,34 @@ def _distribution(values: list[int]) -> Distribution:
     )
 
 
-def _parquet_uncompressed_size(path: Path) -> int:
-    metadata = pq.read_metadata(path)
-    return sum(
-        metadata.row_group(row_group).column(column).total_uncompressed_size
-        for row_group in range(metadata.num_row_groups)
-        for column in range(metadata.row_group(row_group).num_columns)
-    )
-
-
 def inspect_dataset(source: DatasetSource) -> DatasetProfile:
-    data_paths = tuple(dict.fromkeys(episode.data_path for episode in source.episodes))
-    video_paths = tuple(
-        dict.fromkeys(video.path for episode in source.episodes for video in episode.videos.values())
-    )
-    data_physical = file_sizes(data_paths)
-    video_physical = file_sizes(video_paths)
-    uncompressed = [_parquet_uncompressed_size(path) for path in data_paths]
-    episodes_per_file = Counter(episode.data_path for episode in source.episodes)
+    data_resources = {}
+    media_resources = {}
+    episodes_per_resource: Counter[str] = Counter()
+    for episode in source.episodes:
+        data = source.data_profile(episode)
+        data_resources.setdefault(data.locality_key, data)
+        episodes_per_resource[data.locality_key] += 1
+        for key in source.metadata.video_keys:
+            media = source.media_profile(episode, key)
+            media_resources.setdefault(media.locality_key, media)
+    data_profiles = tuple(data_resources.values())
+    media_profiles = tuple(media_resources.values())
     return DatasetProfile(
         version=source.metadata.version,
         episodes=source.metadata.total_episodes,
         frames=source.metadata.total_frames,
         cameras=len(source.metadata.video_keys),
-        data_files=len(data_paths),
-        video_files=len(video_paths),
-        parquet_uncompressed_bytes=_distribution(uncompressed),
-        parquet_physical_bytes=_distribution(data_physical),
-        video_physical_bytes=_distribution(video_physical),
-        episodes_per_data_file=_distribution(list(episodes_per_file.values())),
+        data_files=len(data_profiles),
+        video_files=len(media_profiles),
+        data_logical_bytes=_distribution(
+            [profile.resource_logical_bytes for profile in data_profiles]
+        ),
+        data_physical_bytes=_distribution(
+            [profile.resource_physical_bytes for profile in data_profiles]
+        ),
+        media_input_bytes=_distribution(
+            [profile.input_bytes for profile in media_profiles]
+        ),
+        episodes_per_data_resource=_distribution(list(episodes_per_resource.values())),
     )

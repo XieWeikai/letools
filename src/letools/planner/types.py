@@ -42,16 +42,36 @@ class StorageProfile:
 
 @dataclass(frozen=True)
 class DatasetProfile:
+    """Format-neutral workload shape consumed by planner policy."""
+
     version: str
     episodes: int
     frames: int
     cameras: int
     data_files: int
     video_files: int
-    parquet_uncompressed_bytes: Distribution
-    parquet_physical_bytes: Distribution
-    video_physical_bytes: Distribution
-    episodes_per_data_file: Distribution
+    data_logical_bytes: Distribution
+    data_physical_bytes: Distribution
+    media_input_bytes: Distribution
+    episodes_per_data_resource: Distribution
+
+    # These aliases keep existing Python integrations source compatible while
+    # plan JSON and new policy code use storage-neutral terminology.
+    @property
+    def parquet_uncompressed_bytes(self) -> Distribution:
+        return self.data_logical_bytes
+
+    @property
+    def parquet_physical_bytes(self) -> Distribution:
+        return self.data_physical_bytes
+
+    @property
+    def video_physical_bytes(self) -> Distribution:
+        return self.media_input_bytes
+
+    @property
+    def episodes_per_data_file(self) -> Distribution:
+        return self.episodes_per_data_resource
 
 
 @dataclass(frozen=True)

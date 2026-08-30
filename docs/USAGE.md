@@ -478,12 +478,15 @@ rather than a runnable dataset generator. A production source must satisfy:
 - dataset and episode frame totals agree;
 - tasks and episode statistics are complete;
 - `metadata.info` contains the LeRobot fields required by the target backend;
-- every declared video feature has a `VideoSlice` for every episode.
+- every declared video feature has a media input for every episode;
+- `data_profile()` describes logical/physical data size and shared locality;
+- `media_profile()` describes input size, locality, and encoding requirements.
 
 Override `read_episodes()` when the input can batch reads more efficiently.
+Override the profile methods for any source that is not path-based Parquet.
 Custom sources work directly with `convert()` and `compare_datasets()` when
-passed as objects. `plan_conversion()` additionally assumes every `data_path`
-is a readable Parquet file because dataset profiling reads Parquet footers.
+passed as objects. `plan_conversion()` now uses only the format-neutral
+profile methods and does not assume that source data is stored as Parquet.
 Standalone validation, the CLI, and `open_dataset()` auto-detection currently
 support only physical LeRobot v2.1 and v3.0 directories.
 
