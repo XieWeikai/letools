@@ -96,6 +96,11 @@ point. It prefers enough groups to keep workers occupied, caps video concurrency
 conservatively on network/FUSE storage, and reduces concurrency or target size
 under memory pressure. It must complete quickly enough for small datasets.
 
+Parquet target selection simulates FIFO worker loads and includes a fixed
+per-task cost. Video target selection uses the backend's global cross-camera
+worker pool. Network storage uses global load balancing to reduce task and
+metadata overhead; node-local output prefers smaller 100 MiB video groups.
+
 ### 4.3 Bounded calibration
 
 Calibration uses deterministic, stratified real Parquet and video samples so
@@ -107,6 +112,17 @@ Default hard limits are 10 seconds, 1 GiB read, 1 GiB write, and 10 percent of
 predicted conversion time. Temporary outputs are created under the destination
 parent and always removed. Small conversions skip calibration when its expected
 cost cannot be recovered.
+
+Each worker candidate receives enough real tasks to occupy its pool. Batches
+are disjoint when the source has enough tasks; otherwise bounded prefix reuse
+keeps comparisons feasible without repeating the whole dataset. Data-only
+inputs below 512 MiB use the oracle-validated heuristic because calibration
+cost exceeds their conversion cost.
+
+When the byte budget cannot fit the largest video-worker sample, the planner
+may extrapolate only from at least two measured points whose latest parallel
+efficiency is at least 80 percent. Unmeasured extrapolation on network storage
+is capped at 16 workers. Local storage may use the effective CPU ceiling.
 
 ### 4.4 Selection
 
@@ -135,7 +151,9 @@ The cache is stored outside the repository under the user's platform cache
 directory. Its key includes planner/letools versions, target direction,
 effective resource bucket, CPU model, source and destination mount identities,
 dataset size/file-distribution buckets, camera count, and codecs when known.
-Entries contain evidence and expiry metadata. An incompatible schema or changed
+The key also contains an explicit planner-algorithm version, so policy changes
+cannot reuse stale measurements. Entries contain evidence and expiry metadata.
+An incompatible schema or changed
 fingerprint is a miss. Cache failures never prevent planning.
 
 ## 7. Performance acceptance
@@ -146,6 +164,11 @@ For each mandatory static scenario, an offline oracle exhausts the planner's
 feasible candidate domain. Data `(workers, target-size)` and video
 `(video-workers, target-size)` pairs are searched separately, then their best
 pair is confirmed in a full conversion. V2.1 targets omit size dimensions.
+
+The oracle constructs every camera's jobs in one global worker pool, matching
+the backend. Target sizes that produce identical task boundaries are one
+equivalence class and share measurements instead of turning I/O noise into
+false size regret.
 
 Each candidate has at least three successful samples; use five when dispersion
 exceeds 5 percent. Final oracle/planner comparison alternates `O P O P O P` and
@@ -188,6 +211,8 @@ CPU/memory Slurm anchors are 2 CPU/4 GiB, 8 CPU/4 GiB, 8 CPU/16 GiB,
 Synthetic datasets cover many short episodes, few long episodes, wide Parquet,
 and video-heavy one- and multi-camera cases. Frozen dagger medium and full
 workloads anchor real behavior in both conversion directions.
+
+The executed acceptance results are recorded in `docs/PLANNER_BENCHMARK.md`.
 
 A test-only user-space filesystem throttle may add independently controlled
 source bandwidth, destination bandwidth, and metadata latency. It supplements

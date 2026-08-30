@@ -68,6 +68,39 @@ Conversions write into a staging directory and publish the destination only
 after success. Existing destinations are not replaced unless `--overwrite` is
 provided.
 
+### Automatic planning
+
+Inspect the environment and print a read-only static plan:
+
+```bash
+uv run letools plan /data/dataset-v21 /data/dataset-v30 --to v3.0
+```
+
+Add bounded workload calibration when the plan will be used for a substantial
+conversion:
+
+```bash
+uv run letools plan /data/dataset-v21 /data/dataset-v30 --to v3.0 --calibrate
+```
+
+Plan and execute in one command:
+
+```bash
+uv run letools convert /data/dataset-v21 /data/dataset-v30 --to v3.0 --auto
+```
+
+The planner reads Slurm, process-affinity, cgroup, memory, dataset, and source
+and destination filesystem limits. It chooses workers and, for v3 output, file
+targets before conversion begins. Explicit performance flags remain hard
+constraints when combined with `--auto`; unspecified fields are planned.
+
+Calibration is limited by default to 10 seconds, 1 GiB of source reads, and
+1 GiB of temporary writes. Temporary outputs are removed before conversion.
+Plans and their evidence are cached by resource, storage, dataset, direction,
+and planner-algorithm fingerprint. Use `--no-cache` for an independent cold
+measurement. See [the planner design](docs/PLANNER.md) and
+[Slurm acceptance results](docs/PLANNER_BENCHMARK.md).
+
 On a Slurm cluster, submit conversion commands through the site's normal
 wrapper. For example:
 
