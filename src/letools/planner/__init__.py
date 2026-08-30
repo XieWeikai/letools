@@ -1,5 +1,7 @@
 from .api import plan_conversion
 from .types import (
+    CalibrationMeasurement,
+    CalibrationOptions,
     ConversionPlan,
     DatasetProfile,
     Distribution,
@@ -9,6 +11,8 @@ from .types import (
 )
 
 __all__ = [
+    "CalibrationMeasurement",
+    "CalibrationOptions",
     "ConversionPlan",
     "DatasetProfile",
     "Distribution",

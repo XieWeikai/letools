@@ -63,6 +63,27 @@ class PerformanceOverrides:
 
 
 @dataclass(frozen=True)
+class CalibrationOptions:
+    enabled: bool = False
+    max_seconds: float = 10.0
+    max_read_bytes: int = 1024**3
+    max_write_bytes: int = 1024**3
+
+
+@dataclass(frozen=True)
+class CalibrationMeasurement:
+    stage: str
+    workers: int
+    tasks: int
+    input_bytes: int
+    elapsed_seconds: float
+
+    @property
+    def throughput_bytes_per_second(self) -> float:
+        return self.input_bytes / max(self.elapsed_seconds, 1e-9)
+
+
+@dataclass(frozen=True)
 class ConversionPlan:
     schema_version: int
     source: Path
@@ -84,6 +105,7 @@ class ConversionPlan:
     estimated_data_tasks: int
     estimated_video_tasks: int
     reasons: tuple[str, ...] = field(default_factory=tuple)
+    measurements: tuple[CalibrationMeasurement, ...] = field(default_factory=tuple)
     cache_hit: bool = False
 
     def conversion_config(

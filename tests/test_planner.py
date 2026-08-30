@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 
 import pytest
 
-from letools.planner import PerformanceOverrides, plan_conversion
+from letools.planner import CalibrationOptions, PerformanceOverrides, plan_conversion
+from letools.planner.cache import load_cached_choice, save_cached_choice
+from letools.planner.calibrate import _Budget, _measure_stage
 from letools.planner.heuristic import choose_heuristic, worker_candidates
 from letools.planner.inspect import _parse_cpu_set, inspect_dataset, inspect_storage
 from letools.planner.types import ResourceProfile
@@ -77,3 +80,65 @@ def test_heuristic_rejects_infeasible_override(tmp_path) -> None:
             source_plan.destination_storage,
             PerformanceOverrides(data_file_size_mb=64),
         )
+
+
+def test_bounded_calibration_selects_parallel_knee_and_cleans_outputs(tmp_path) -> None:
+    def job(_root, _index) -> None:
+        time.sleep(0.02)
+
+    jobs = [(1024, job) for _ in range(4)]
+    options = CalibrationOptions(
+        enabled=True,
+        max_seconds=1.0,
+        max_read_bytes=1024 * 1024,
+        max_write_bytes=1024 * 1024,
+    )
+    selected, measurements = _measure_stage(
+        "test",
+        [jobs, jobs, jobs],
+        (1, 2, 4),
+        tmp_path,
+        _Budget(options=options, started=time.perf_counter()),
+    )
+    assert selected == 4
+    assert [measurement.workers for measurement in measurements] == [1, 2, 4]
+    assert not list(tmp_path.iterdir())
+
+
+def test_small_dataset_skips_calibration(tmp_path) -> None:
+    source = make_v21(tmp_path / "v21")
+    plan = plan_conversion(
+        source,
+        tmp_path / "v30",
+        "v3.0",
+        calibration=CalibrationOptions(enabled=True),
+    )
+    assert plan.confidence == "heuristic"
+    assert not plan.measurements
+    assert not list(tmp_path.glob(".letools-calibration-*"))
+
+
+def test_plan_cache_is_atomic_and_expires(tmp_path) -> None:
+    value = {
+        "workers": 2,
+        "video_workers": 3,
+        "data_file_size_mb": 100,
+        "video_file_size_mb": 200,
+        "measurements": [],
+    }
+    save_cached_choice(
+        "valid",
+        value,
+        ttl_seconds=60,
+        cache_directory=tmp_path,
+    )
+    assert load_cached_choice("valid", tmp_path) == value
+    assert not list(tmp_path.glob("*.tmp"))
+
+    save_cached_choice(
+        "expired",
+        value,
+        ttl_seconds=-1,
+        cache_directory=tmp_path,
+    )
+    assert load_cached_choice("expired", tmp_path) is None

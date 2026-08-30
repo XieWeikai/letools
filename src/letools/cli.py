@@ -8,7 +8,7 @@ from typing import Any
 
 from letools.conversion import ConversionConfig, convert
 from letools.doctor import environment_report
-from letools.planner import PerformanceOverrides, plan_conversion
+from letools.planner import CalibrationOptions, PerformanceOverrides, plan_conversion
 from letools.validation import compare_datasets, validate_dataset
 
 
@@ -43,6 +43,10 @@ def build_parser() -> argparse.ArgumentParser:
     planning.add_argument("--video-workers", type=int)
     planning.add_argument("--data-file-size-mb", type=int)
     planning.add_argument("--video-file-size-mb", type=int)
+    planning.add_argument("--calibrate", action="store_true")
+    planning.add_argument("--calibration-seconds", type=float, default=10.0)
+    planning.add_argument("--calibration-mb", type=int, default=1024)
+    planning.add_argument("--no-cache", action="store_true")
     validation = commands.add_parser("validate", help="Validate a LeRobot dataset")
     validation.add_argument("dataset", type=Path)
     validation.add_argument("--deep", action="store_true")
@@ -84,6 +88,13 @@ def main(argv: list[str] | None = None) -> int:
                 data_file_size_mb=args.data_file_size_mb,
                 video_file_size_mb=args.video_file_size_mb,
             ),
+            calibration=CalibrationOptions(
+                enabled=args.calibrate,
+                max_seconds=args.calibration_seconds,
+                max_read_bytes=args.calibration_mb * 1024**2,
+                max_write_bytes=args.calibration_mb * 1024**2,
+            ),
+            use_cache=not args.no_cache,
         )
         _print(plan)
         return 0

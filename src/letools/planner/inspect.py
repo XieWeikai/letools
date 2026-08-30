@@ -162,7 +162,7 @@ def _unescape_mount(value: str) -> str:
 def inspect_storage(path: str | Path) -> StorageProfile:
     requested = Path(path).resolve(strict=False)
     existing = _existing_ancestor(requested)
-    best: tuple[Path, str, str, str] | None = None
+    best: tuple[Path, str, str] | None = None
     try:
         rows = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -181,8 +181,8 @@ def inspect_storage(path: str | Path) -> StorageProfile:
         except ValueError:
             continue
         if best is None or len(mount.parts) > len(best[0].parts):
-            best = (mount, filesystem[0], filesystem[1], fields[2])
-    mount, filesystem, source, device = best or (Path("/"), "unknown", "unknown", "unknown")
+            best = (mount, filesystem[0], filesystem[1])
+    mount, filesystem, source = best or (Path("/"), "unknown", "unknown")
     if filesystem == "tmpfs":
         storage_class = "memory"
     elif filesystem in _NETWORK_FILESYSTEMS or filesystem.startswith("fuse."):
@@ -198,7 +198,7 @@ def inspect_storage(path: str | Path) -> StorageProfile:
         mount_point=mount,
         filesystem=filesystem,
         storage_class=storage_class,
-        device=f"{device}:{source}",
+        device=source,
         free_bytes=stat.f_bavail * stat.f_frsize,
     )
 
