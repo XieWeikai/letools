@@ -8,6 +8,7 @@ from typing import Any
 
 from letools.conversion import ConversionConfig, convert
 from letools.doctor import environment_report
+from letools.planner import PerformanceOverrides, plan_conversion
 from letools.validation import compare_datasets, validate_dataset
 
 
@@ -34,6 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
     conversion.add_argument("--video-file-size-mb", type=int, default=200)
     conversion.add_argument("--overwrite", action="store_true")
     conversion.add_argument("--no-validate", action="store_true")
+    planning = commands.add_parser("plan", help="Plan a local LeRobot conversion")
+    planning.add_argument("source", type=Path)
+    planning.add_argument("destination", type=Path)
+    planning.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
+    planning.add_argument("--workers", type=int)
+    planning.add_argument("--video-workers", type=int)
+    planning.add_argument("--data-file-size-mb", type=int)
+    planning.add_argument("--video-file-size-mb", type=int)
     validation = commands.add_parser("validate", help="Validate a LeRobot dataset")
     validation.add_argument("dataset", type=Path)
     validation.add_argument("--deep", action="store_true")
@@ -63,6 +72,20 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         _print(result)
+        return 0
+    if args.command == "plan":
+        plan = plan_conversion(
+            args.source,
+            args.destination,
+            args.to,
+            overrides=PerformanceOverrides(
+                workers=args.workers,
+                video_workers=args.video_workers,
+                data_file_size_mb=args.data_file_size_mb,
+                video_file_size_mb=args.video_file_size_mb,
+            ),
+        )
+        _print(plan)
         return 0
     if args.command == "validate":
         report = validate_dataset(args.dataset, deep=args.deep)
