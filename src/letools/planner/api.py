@@ -6,6 +6,7 @@ import time
 from dataclasses import asdict, replace
 from pathlib import Path
 
+from letools.conversion import convert
 from letools.planner.cache import load_cached_choice, save_cached_choice
 from letools.planner.calibrate import calibrate_workers
 from letools.planner.heuristic import choose_heuristic
@@ -15,6 +16,7 @@ from letools.planner.types import (
     CalibrationOptions,
     ConversionPlan,
     PerformanceOverrides,
+    PlannedConversionResult,
 )
 from letools.plugins import DatasetSource, open_dataset
 
@@ -166,3 +168,33 @@ def plan_conversion(
         measurements=measurements,
         cache_hit=cache_hit,
     )
+
+
+def plan_and_convert(
+    source: str | Path | DatasetSource,
+    destination: str | Path,
+    target_version: str,
+    *,
+    overrides: PerformanceOverrides | None = None,
+    calibration: CalibrationOptions | None = None,
+    use_cache: bool = True,
+    cache_directory: Path | None = None,
+    overwrite: bool = False,
+    validate: bool = True,
+) -> PlannedConversionResult:
+    plan = plan_conversion(
+        source,
+        destination,
+        target_version,
+        overrides=overrides,
+        calibration=calibration or CalibrationOptions(enabled=True),
+        use_cache=use_cache,
+        cache_directory=cache_directory,
+    )
+    result = convert(
+        source,
+        destination,
+        target_version,
+        config=plan.conversion_config(overwrite=overwrite, validate=validate),
+    )
+    return PlannedConversionResult(plan=plan, conversion=result)

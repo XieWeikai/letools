@@ -1,4 +1,4 @@
-from .api import plan_conversion
+from .api import plan_and_convert, plan_conversion
 from .types import (
     CalibrationMeasurement,
     CalibrationOptions,
@@ -6,6 +6,7 @@ from .types import (
     DatasetProfile,
     Distribution,
     PerformanceOverrides,
+    PlannedConversionResult,
     ResourceProfile,
     StorageProfile,
 )
@@ -17,7 +18,9 @@ __all__ = [
     "DatasetProfile",
     "Distribution",
     "PerformanceOverrides",
+    "PlannedConversionResult",
     "ResourceProfile",
     "StorageProfile",
+    "plan_and_convert",
     "plan_conversion",
 ]

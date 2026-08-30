@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from letools.conversion_types import ConversionConfig
+from letools.conversion_types import ConversionConfig, ConversionResult
 
 
 @dataclass(frozen=True)
@@ -123,3 +123,9 @@ class ConversionPlan:
             overwrite=overwrite,
             validate=validate,
         )
+
+
+@dataclass(frozen=True)
+class PlannedConversionResult:
+    plan: ConversionPlan
+    conversion: ConversionResult

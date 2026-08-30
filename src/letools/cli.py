@@ -8,7 +8,12 @@ from typing import Any
 
 from letools.conversion import ConversionConfig, convert
 from letools.doctor import environment_report
-from letools.planner import CalibrationOptions, PerformanceOverrides, plan_conversion
+from letools.planner import (
+    CalibrationOptions,
+    PerformanceOverrides,
+    plan_and_convert,
+    plan_conversion,
+)
 from letools.validation import compare_datasets, validate_dataset
 
 
@@ -29,12 +34,16 @@ def build_parser() -> argparse.ArgumentParser:
     conversion.add_argument("source", type=Path)
     conversion.add_argument("destination", type=Path)
     conversion.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
-    conversion.add_argument("--workers", type=int, default=ConversionConfig().workers)
-    conversion.add_argument("--video-workers", type=int, default=ConversionConfig().video_workers)
-    conversion.add_argument("--data-file-size-mb", type=int, default=100)
-    conversion.add_argument("--video-file-size-mb", type=int, default=200)
+    conversion.add_argument("--workers", type=int)
+    conversion.add_argument("--video-workers", type=int)
+    conversion.add_argument("--data-file-size-mb", type=int)
+    conversion.add_argument("--video-file-size-mb", type=int)
     conversion.add_argument("--overwrite", action="store_true")
     conversion.add_argument("--no-validate", action="store_true")
+    conversion.add_argument("--auto", action="store_true")
+    conversion.add_argument("--calibration-seconds", type=float, default=10.0)
+    conversion.add_argument("--calibration-mb", type=int, default=1024)
+    conversion.add_argument("--no-cache", action="store_true")
     planning = commands.add_parser("plan", help="Plan a local LeRobot conversion")
     planning.add_argument("source", type=Path)
     planning.add_argument("destination", type=Path)
@@ -62,19 +71,42 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "convert":
-        result = convert(
-            args.source,
-            args.destination,
-            args.to,
-            config=ConversionConfig(
-                workers=max(1, args.workers),
-                video_workers=max(1, args.video_workers),
-                data_file_size_mb=args.data_file_size_mb,
-                video_file_size_mb=args.video_file_size_mb,
+        if args.auto:
+            result = plan_and_convert(
+                args.source,
+                args.destination,
+                args.to,
+                overrides=PerformanceOverrides(
+                    workers=args.workers,
+                    video_workers=args.video_workers,
+                    data_file_size_mb=args.data_file_size_mb,
+                    video_file_size_mb=args.video_file_size_mb,
+                ),
+                calibration=CalibrationOptions(
+                    enabled=True,
+                    max_seconds=args.calibration_seconds,
+                    max_read_bytes=args.calibration_mb * 1024**2,
+                    max_write_bytes=args.calibration_mb * 1024**2,
+                ),
+                use_cache=not args.no_cache,
                 overwrite=args.overwrite,
                 validate=not args.no_validate,
-            ),
-        )
+            )
+        else:
+            defaults = ConversionConfig()
+            result = convert(
+                args.source,
+                args.destination,
+                args.to,
+                config=ConversionConfig(
+                    workers=max(1, args.workers or defaults.workers),
+                    video_workers=max(1, args.video_workers or defaults.video_workers),
+                    data_file_size_mb=args.data_file_size_mb or defaults.data_file_size_mb,
+                    video_file_size_mb=args.video_file_size_mb or defaults.video_file_size_mb,
+                    overwrite=args.overwrite,
+                    validate=not args.no_validate,
+                ),
+            )
         _print(result)
         return 0
     if args.command == "plan":

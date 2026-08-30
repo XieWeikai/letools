@@ -5,7 +5,12 @@ from dataclasses import replace
 
 import pytest
 
-from letools.planner import CalibrationOptions, PerformanceOverrides, plan_conversion
+from letools.planner import (
+    CalibrationOptions,
+    PerformanceOverrides,
+    plan_and_convert,
+    plan_conversion,
+)
 from letools.planner.cache import load_cached_choice, save_cached_choice
 from letools.planner.calibrate import _Budget, _measure_stage
 from letools.planner.heuristic import choose_heuristic, worker_candidates
@@ -142,3 +147,18 @@ def test_plan_cache_is_atomic_and_expires(tmp_path) -> None:
         cache_directory=tmp_path,
     )
     assert load_cached_choice("expired", tmp_path) is None
+
+
+def test_planned_conversion_executes_selected_config(tmp_path) -> None:
+    source = make_v21(tmp_path / "v21")
+    destination = tmp_path / "v30"
+    result = plan_and_convert(
+        source,
+        destination,
+        "v3.0",
+        overrides=PerformanceOverrides(workers=1, data_file_size_mb=64),
+        use_cache=False,
+    )
+    assert result.plan.workers == 1
+    assert result.plan.data_file_size_mb == 64
+    assert result.conversion.frames == result.plan.dataset.frames
