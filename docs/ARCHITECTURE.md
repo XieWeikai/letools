@@ -123,7 +123,7 @@ primitive that owns the whole operation.
 | `backends/v21.py` | v2.1 paths, metadata, per-episode Parquet/video output | v3 layout parsing |
 | `backends/v30.py` | v3 grouping, offsets, metadata, aggregate stats | v2 layout parsing |
 | `_arrow.py` | Canonical schemas, casts, safe feature-shape normalization | Dataset traversal policy |
-| `_video.py` | Whole-file concat/split/digest operations and native fallback | Episode metadata policy |
+| `_video.py` | Media dispatch, packet remux, frame decode/encode, and native fallback | Source parsing or episode metadata policy |
 | `_stats.py` | Vectorized dataset-stat aggregation and flattening | Physical metadata layout |
 | `_io.py` | Small JSON/JSONL write primitives | Conversion orchestration |
 | `_native.py` | Capability detection and narrow PyO3 wrappers | Silent semantic differences |
@@ -300,6 +300,16 @@ Python: success/error + output paths/digests
 No `AVPacket`, `AVFrame`, stream, codec, or allocator crosses the boundary.
 This prevents per-packet Python calls and avoids coupling PyAV's bundled FFmpeg
 ABI to the native wheel's separately bundled FFmpeg ABI.
+
+Frame-sequence inputs take a separate PyAV path because their source contains
+still images rather than an encoded video stream. The plugin returns batches of
+encoded images; the media writer decodes those images and feeds a single output
+encoder per shard. `video_workers` limits concurrent output jobs, while
+`VideoEncodingConfig.codec_threads` limits threads inside each encoder. Existing
+`VideoSlice` groups are dispatched directly to the unchanged remux primitives.
+When encoding occurs, the backend records the selected codec, pixel format, FPS,
+and lack of audio in the target video feature metadata. Remux-only conversions
+preserve the source codec metadata unchanged.
 
 ## 12. Validation boundary
 

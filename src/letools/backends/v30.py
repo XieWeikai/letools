@@ -13,10 +13,10 @@ import pyarrow.parquet as pq
 from letools._arrow import canonical_data_schema, cast_data_table, normalize_feature_shapes
 from letools._io import write_json
 from letools._stats import aggregate_episode_stats, flatten_stats
-from letools._video import concatenate_videos
+from letools._video import apply_encoding_metadata, media_duration, write_media_group
 from letools.backends.base import DatasetBackend
 from letools.conversion_types import ConversionConfig
-from letools.model import Episode, VideoSlice
+from letools.model import Episode
 from letools.plugins import DatasetSource
 from letools.telemetry import StageRecorder
 
@@ -62,9 +62,19 @@ class LeRobotV30Backend(DatasetBackend):
         )
         info["fps"] = int(source.metadata.fps)
         normalize_feature_shapes(source, info["features"])
-        for feature in info["features"].values():
+        for key, feature in info["features"].items():
             if feature["dtype"] != "video":
                 feature["fps"] = source.metadata.fps
+            elif any(
+                source.media_profile(episode, key).requires_encoding
+                for episode in source.episodes
+            ):
+                apply_encoding_metadata(
+                    feature,
+                    source.metadata.fps,
+                    config.video_encoding,
+                    include_legacy_video_info=False,
+                )
         write_json(destination / "meta/info.json", info)
         task_rows = [
             {"task_index": index, "task": task}
@@ -135,9 +145,7 @@ class LeRobotV30Backend(DatasetBackend):
                 elapsed = 0.0
                 for episode in group:
                     media = source.media_input(episode, video_key)
-                    if not isinstance(media, VideoSlice):
-                        raise TypeError("v3.0 backend does not yet encode frame sequences")
-                    duration = media.duration
+                    duration = media_duration(media, source.metadata.fps)
                     rows[episode.index].update(
                         {
                             f"videos/{video_key}/chunk_index": chunk_index,
@@ -151,13 +159,18 @@ class LeRobotV30Backend(DatasetBackend):
                     video_key=video_key, chunk_index=chunk_index, file_index=file_index
                 )
                 inputs = [source.media_input(episode, video_key) for episode in group]
-                if not all(isinstance(media, VideoSlice) for media in inputs):
-                    raise TypeError("v3.0 backend does not yet encode frame sequences")
-                jobs.append(([media.path for media in inputs], output))
+                jobs.append((inputs, output))
             video_plan_elapsed += time.perf_counter() - video_plan_started
             video_started = time.perf_counter()
             with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:
-                list(pool.map(lambda job: concatenate_videos(*job), jobs))
+                list(
+                    pool.map(
+                        lambda job: write_media_group(
+                            *job, source.metadata.fps, config.video_encoding
+                        ),
+                        jobs,
+                    )
+                )
             video_execute_elapsed += time.perf_counter() - video_started
             video_tasks += len(jobs)
         recorder.add("video_plan", video_plan_elapsed)

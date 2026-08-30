@@ -1,4 +1,5 @@
 from .conversion import ConversionConfig, ConversionResult, convert
+from .conversion_types import VideoEncodingConfig
 from .planner import (
     ConversionPlan,
     PerformanceOverrides,
@@ -23,6 +24,7 @@ __all__ = [
     "PlannedConversionResult",
     "StageMetrics",
     "ValidationReport",
+    "VideoEncodingConfig",
     "compare_datasets",
     "convert",
     "open_dataset",

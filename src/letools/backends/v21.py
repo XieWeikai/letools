@@ -10,10 +10,10 @@ import pyarrow.parquet as pq
 
 from letools._arrow import normalize_feature_shapes
 from letools._io import write_json, write_jsonl
-from letools._video import split_video
+from letools._video import apply_encoding_metadata, write_episode_media
 from letools.backends.base import DatasetBackend
 from letools.conversion_types import ConversionConfig
-from letools.model import Episode, VideoSlice
+from letools.model import Episode
 from letools.plugins import DatasetSource
 from letools.telemetry import StageRecorder
 
@@ -43,9 +43,19 @@ class LeRobotV21Backend(DatasetBackend):
             else None
         )
         normalize_feature_shapes(source, info["features"])
-        for feature in info["features"].values():
+        for key, feature in info["features"].items():
             if feature["dtype"] != "video":
                 feature.pop("fps", None)
+            elif any(
+                source.media_profile(episode, key).requires_encoding
+                for episode in source.episodes
+            ):
+                apply_encoding_metadata(
+                    feature,
+                    source.metadata.fps,
+                    config.video_encoding,
+                    include_legacy_video_info=True,
+                )
         write_json(destination / "meta/info.json", info)
         write_jsonl(
             destination / "meta/tasks.jsonl",
@@ -110,13 +120,18 @@ class LeRobotV21Backend(DatasetBackend):
                     (source.media_input(episode, video_key), target)
                     for episode, target in group
                 ]
-                if not all(isinstance(media, VideoSlice) for media, _ in inputs):
-                    raise TypeError("v2.1 backend does not yet encode frame sequences")
-                jobs.append((inputs[0][0].path, inputs))
+                jobs.append(inputs)
         recorder.add("video_plan", time.perf_counter() - video_plan_started)
         video_started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:
-            list(pool.map(lambda job: split_video(*job), jobs))
+            list(
+                pool.map(
+                    lambda job: write_episode_media(
+                        job, source.metadata.fps, config.video_encoding
+                    ),
+                    jobs,
+                )
+            )
         recorder.add(
             "video_execute", time.perf_counter() - video_started, tasks=len(jobs)
         )

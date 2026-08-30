@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from letools.telemetry import StageMetrics
+
+
+@dataclass(frozen=True)
+class VideoEncodingConfig:
+    """Encoding policy used only when a source provides image frames."""
+
+    codec: str = "mpeg4"
+    pixel_format: str = "yuv420p"
+    batch_frames: int = 32
+    codec_threads: int = 1
 
 
 @dataclass(frozen=True)
@@ -16,6 +26,7 @@ class ConversionConfig:
     chunks_size: int = 1000
     overwrite: bool = False
     validate: bool = True
+    video_encoding: VideoEncodingConfig = field(default_factory=VideoEncodingConfig)
 
 
 @dataclass(frozen=True)

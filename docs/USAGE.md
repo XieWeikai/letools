@@ -356,6 +356,15 @@ print(result.stages["video_execute"].elapsed_seconds)
 directory chunk in generated layouts and is currently configurable only through
 the Python API.
 
+Sources that provide `FrameSequence` media use `ConversionConfig.video_encoding`.
+The default is the portable FFmpeg `mpeg4` encoder with `yuv420p`, batches of 32
+source images, and one codec thread per output job. These settings do not affect
+LeRobot-to-LeRobot conversion: `VideoSlice` inputs continue to be remuxed without
+decoding or re-encoding. Advanced Python callers may supply
+`VideoEncodingConfig(codec=..., pixel_format=..., batch_frames=...,
+codec_threads=...)`; the selected encoder must exist in the installed PyAV
+runtime.
+
 ### Plan only
 
 ```python

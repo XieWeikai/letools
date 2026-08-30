@@ -1,3 +1,4 @@
+from fractions import Fraction
 from pathlib import Path
 
 import av
@@ -5,8 +6,33 @@ import numpy as np
 
 from letools import _native
 
-from letools._video import concatenate_videos, packet_digests, split_video, video_duration
-from letools.model import VideoSlice
+from letools._video import (
+    concatenate_videos,
+    packet_digests,
+    split_video,
+    video_duration,
+    write_episode_media,
+    write_media_group,
+)
+from letools.conversion_types import VideoEncodingConfig
+from letools.model import FrameSequence, VideoSlice
+
+
+class BytesFrameSequence(FrameSequence):
+    """In-memory JPEG source used to exercise the batch media contract."""
+
+    def __init__(self, frames: tuple[bytes, ...], width: int, height: int) -> None:
+        self._frames = frames
+        self.frame_count = len(frames)
+        self.width = width
+        self.height = height
+        self.encoded_format = "jpeg"
+        self.estimated_size_bytes = sum(map(len, frames))
+        self.requests: list[tuple[int, int]] = []
+
+    def read_batch(self, start: int, stop: int) -> tuple[bytes, ...]:
+        self.requests.append((start, stop))
+        return self._frames[start:stop]
 
 
 def _make_video(path: Path, value: int) -> None:
@@ -23,6 +49,22 @@ def _make_video(path: Path, value: int) -> None:
     for packet in stream.encode():
         container.mux(packet)
     container.close()
+
+
+def _make_jpegs(value: int, count: int = 5) -> tuple[bytes, ...]:
+    codec = av.CodecContext.create("mjpeg", "w")
+    codec.width = 32
+    codec.height = 24
+    codec.pix_fmt = "yuvj420p"
+    codec.time_base = Fraction(1, 10)
+    frames = []
+    for index in range(count):
+        array = np.full((24, 32, 3), value + index, dtype=np.uint8)
+        packet = codec.encode(av.VideoFrame.from_ndarray(array, format="rgb24"))
+        assert len(packet) == 1
+        frames.append(bytes(packet[0]))
+    assert not codec.encode(None)
+    return tuple(frames)
 
 
 def test_concat_and_split_preserve_packet_payloads(tmp_path: Path, monkeypatch) -> None:
@@ -55,3 +97,27 @@ def test_concat_and_split_preserve_packet_payloads(tmp_path: Path, monkeypatch) 
         packet_digests([VideoSlice(split_second, 0.0, second_duration)])[0],
     ]
     assert actual == expected
+
+
+def test_frame_sequences_encode_in_batches_for_both_layouts(tmp_path: Path) -> None:
+    first = BytesFrameSequence(_make_jpegs(10), 32, 24)
+    second = BytesFrameSequence(_make_jpegs(30, count=3), 32, 24)
+    encoding = VideoEncodingConfig(batch_frames=2)
+    grouped = tmp_path / "grouped.mp4"
+    write_media_group([first, second], grouped, 10, encoding)
+
+    with av.open(str(grouped)) as container:
+        decoded = list(container.decode(video=0))
+    assert len(decoded) == 8
+    assert first.requests == [(0, 2), (2, 4), (4, 5)]
+    assert second.requests == [(0, 2), (2, 3)]
+
+    first_output = tmp_path / "episode-0.mp4"
+    second_output = tmp_path / "episode-1.mp4"
+    write_episode_media(
+        [(first, first_output), (second, second_output)], 10, encoding
+    )
+    with av.open(str(first_output)) as container:
+        assert len(list(container.decode(video=0))) == 5
+    with av.open(str(second_output)) as container:
+        assert len(list(container.decode(video=0))) == 3

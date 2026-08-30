@@ -14,8 +14,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from letools._arrow import canonical_data_schema, cast_data_table
-from letools._video import concatenate_videos, split_video
-from letools.model import VideoSlice
+from letools._video import write_episode_media, write_media_group
+from letools.conversion_types import VideoEncodingConfig
 from letools.planner.heuristic import (
     VIDEO_TARGETS_MB,
     HeuristicChoice,
@@ -118,15 +118,17 @@ def _v30_video_jobs(source: DatasetSource, target_mb: int = 32) -> list[_Job]:
         groups = _group_by_limit(episodes, sizes, target_mb * _MIB)
         for group in groups:
             media = tuple(source.media_input(episode, key) for episode in group)
-            if not all(isinstance(item, VideoSlice) for item in media):
-                raise TypeError("video calibration does not yet encode frame sequences")
-            paths = tuple(item.path for item in media)
             input_bytes = sum(
                 source.media_profile(episode, key).input_bytes for episode in group
             )
 
-            def run(root: Path, index: int, inputs=paths) -> None:
-                concatenate_videos(inputs, root / f"video-{index:04d}.mp4")
+            def run(root: Path, index: int, inputs=media) -> None:
+                write_media_group(
+                    inputs,
+                    root / f"video-{index:04d}.mp4",
+                    source.metadata.fps,
+                    VideoEncodingConfig(),
+                )
 
             jobs.append((input_bytes, run))
     return jobs
@@ -146,16 +148,17 @@ def _v21_video_jobs(source: DatasetSource) -> list[_Job]:
                 (source.media_input(episode, key), episode.index)
                 for episode in episodes
             )
-            if not all(isinstance(media, VideoSlice) for media, _ in selected):
-                raise TypeError("video calibration does not yet encode frame sequences")
-            path = selected[0][0].path
             input_bytes = source.media_profile(episodes[0], key).input_bytes
 
-            def run(root: Path, index: int, slices=selected, source_path=path) -> None:
+            def run(root: Path, index: int, media=selected) -> None:
                 directory = root / f"video-{index:04d}"
-                split_video(
-                    source_path,
-                    [(video_slice, directory / f"{episode_index}.mp4") for video_slice, episode_index in slices],
+                write_episode_media(
+                    [
+                        (item, directory / f"{episode_index}.mp4")
+                        for item, episode_index in media
+                    ],
+                    source.metadata.fps,
+                    VideoEncodingConfig(),
                 )
 
             jobs.append((input_bytes, run))
