@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from letools.backends.base import DatasetBackend
 from letools.conversion_types import ConversionConfig
 from letools.model import Episode
 from letools.plugins import DatasetSource
+from letools.telemetry import StageRecorder
 
 
 def _parquet_size_mb(path: Path) -> float:
@@ -49,7 +51,14 @@ def _groups_by_size(items: list[Episode], sizes: list[float], limit: int) -> lis
 class LeRobotV30Backend(DatasetBackend):
     version = "v3.0"
 
-    def write(self, source: DatasetSource, destination: Path, config: ConversionConfig) -> None:
+    def write(
+        self,
+        source: DatasetSource,
+        destination: Path,
+        config: ConversionConfig,
+        recorder: StageRecorder,
+    ) -> None:
+        metadata_started = time.perf_counter()
         info = copy.deepcopy(source.metadata.info)
         info["codebase_version"] = "v3.0"
         info.pop("total_chunks", None)
@@ -79,7 +88,9 @@ class LeRobotV30Backend(DatasetBackend):
         task_path = destination / "meta/tasks.parquet"
         task_path.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(task_table, task_path)
+        recorder.add("metadata_prepare", time.perf_counter() - metadata_started)
 
+        data_plan_started = time.perf_counter()
         episode_sizes = [_parquet_size_mb(episode.data_path) for episode in source.episodes]
         data_groups = _groups_by_size(list(source.episodes), episode_sizes, config.data_file_size_mb)
         data_schema = canonical_data_schema(source)
@@ -96,6 +107,7 @@ class LeRobotV30Backend(DatasetBackend):
                     "dataset_to_index": global_offset + episode.length,
                 }
                 global_offset += episode.length
+        recorder.add("data_plan", time.perf_counter() - data_plan_started)
 
         def write_data_group(item: tuple[int, list[Episode]]) -> None:
             file_number, group = item
@@ -107,10 +119,18 @@ class LeRobotV30Backend(DatasetBackend):
             tables = [cast_data_table(table, data_schema) for table in source.read_episodes(group)]
             pq.write_table(pa.concat_tables(tables), path)
 
+        data_started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=min(config.workers, len(data_groups) or 1)) as pool:
             list(pool.map(write_data_group, enumerate(data_groups)))
+        recorder.add(
+            "data_execute", time.perf_counter() - data_started, tasks=len(data_groups)
+        )
 
+        video_plan_elapsed = 0.0
+        video_execute_elapsed = 0.0
+        video_tasks = 0
         for video_key in source.metadata.video_keys:
+            video_plan_started = time.perf_counter()
             episodes = list(source.episodes)
             paths = [episode.videos[video_key].path for episode in episodes]
             sizes = [size / (1024**2) for size in file_sizes(paths)]
@@ -134,9 +154,16 @@ class LeRobotV30Backend(DatasetBackend):
                     video_key=video_key, chunk_index=chunk_index, file_index=file_index
                 )
                 jobs.append(([episode.videos[video_key].path for episode in group], output))
+            video_plan_elapsed += time.perf_counter() - video_plan_started
+            video_started = time.perf_counter()
             with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:
                 list(pool.map(lambda job: concatenate_videos(*job), jobs))
+            video_execute_elapsed += time.perf_counter() - video_started
+            video_tasks += len(jobs)
+        recorder.add("video_plan", video_plan_elapsed)
+        recorder.add("video_execute", video_execute_elapsed, tasks=video_tasks)
 
+        metadata_started = time.perf_counter()
         episode_rows = []
         for episode in source.episodes:
             row = rows[episode.index]
@@ -155,3 +182,4 @@ class LeRobotV30Backend(DatasetBackend):
         pq.write_table(pa.Table.from_pylist(episode_rows), episode_path)
         stats = aggregate_episode_stats([episode.stats for episode in source.episodes])
         write_json(destination / "meta/stats.json", stats)
+        recorder.add("metadata_finalize", time.perf_counter() - metadata_started)

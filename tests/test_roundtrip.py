@@ -104,13 +104,27 @@ def test_v21_v30_roundtrip(tmp_path: Path) -> None:
     v30 = tmp_path / "v30"
     roundtrip = tmp_path / "roundtrip"
     config = ConversionConfig(workers=2)
-    convert(source, v30, "v3.0", config=config)
+    forward = convert(source, v30, "v3.0", config=config)
+    assert {
+        "source_open",
+        "metadata_prepare",
+        "data_plan",
+        "data_execute",
+        "video_plan",
+        "video_execute",
+        "metadata_finalize",
+        "conversion_validate",
+        "publish_cleanup",
+    } <= forward.stages.keys()
+    assert forward.stages["data_execute"].tasks > 0
     assert validate_dataset(v30, deep=True).valid
     v30_info = json.loads((v30 / "meta/info.json").read_text())
     assert v30_info["features"]["observation.state"]["shape"] == [2]
     assert v30_info["features"]["action"]["shape"] == [2]
     assert compare_datasets(source, v30).equal
-    convert(v30, roundtrip, "v2.1", config=config)
+    reverse = convert(v30, roundtrip, "v2.1", config=config)
+    assert reverse.stages["data_execute"].tasks > 0
+    assert reverse.elapsed_seconds >= sum(stage.elapsed_seconds for stage in reverse.stages.values())
     assert validate_dataset(roundtrip, deep=True).valid
     roundtrip_info = json.loads((roundtrip / "meta/info.json").read_text())
     assert roundtrip_info["features"]["observation.state"]["shape"] == [2]

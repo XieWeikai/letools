@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from letools.telemetry import StageMetrics
+
 
 @dataclass(frozen=True)
 class ConversionConfig:
@@ -25,3 +27,4 @@ class ConversionResult:
     episodes: int
     frames: int
     elapsed_seconds: float
+    stages: dict[str, StageMetrics]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -14,12 +15,20 @@ from letools.backends.base import DatasetBackend
 from letools.conversion_types import ConversionConfig
 from letools.model import Episode
 from letools.plugins import DatasetSource
+from letools.telemetry import StageRecorder
 
 
 class LeRobotV21Backend(DatasetBackend):
     version = "v2.1"
 
-    def write(self, source: DatasetSource, destination: Path, config: ConversionConfig) -> None:
+    def write(
+        self,
+        source: DatasetSource,
+        destination: Path,
+        config: ConversionConfig,
+        recorder: StageRecorder,
+    ) -> None:
+        metadata_started = time.perf_counter()
         info = copy.deepcopy(source.metadata.info)
         info["codebase_version"] = "v2.1"
         info.pop("data_files_size_in_mb", None)
@@ -59,10 +68,13 @@ class LeRobotV21Backend(DatasetBackend):
                 for episode in source.episodes
             ],
         )
+        recorder.add("metadata_prepare", time.perf_counter() - metadata_started)
 
+        data_plan_started = time.perf_counter()
         data_groups: dict[Path, list[Episode]] = defaultdict(list)
         for episode in source.episodes:
             data_groups[episode.data_path].append(episode)
+        recorder.add("data_plan", time.perf_counter() - data_plan_started)
 
         def write_data_group(group: list[Episode]) -> None:
             for episode in group:
@@ -74,9 +86,14 @@ class LeRobotV21Backend(DatasetBackend):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 pq.write_table(table, path)
 
+        data_started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=min(config.workers, len(data_groups) or 1)) as pool:
             list(pool.map(write_data_group, data_groups.values()))
+        recorder.add(
+            "data_execute", time.perf_counter() - data_started, tasks=len(data_groups)
+        )
 
+        video_plan_started = time.perf_counter()
         jobs = []
         for video_key in source.metadata.video_keys:
             groups: dict[Path, list[tuple[Episode, Path]]] = defaultdict(list)
@@ -94,5 +111,11 @@ class LeRobotV21Backend(DatasetBackend):
                         [(episode.videos[video_key], target) for episode, target in group],
                     )
                 )
+        recorder.add("video_plan", time.perf_counter() - video_plan_started)
+        video_started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:
             list(pool.map(lambda job: split_video(*job), jobs))
+        recorder.add(
+            "video_execute", time.perf_counter() - video_started, tasks=len(jobs)
+        )
+        recorder.add("metadata_finalize", 0.0)
