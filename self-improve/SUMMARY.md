@@ -50,11 +50,12 @@ episodes/s, 17540 trajectory frames/s, and 52620 media frames/s). These are
 measured end-to-end CLI wall times and are not products of per-commit speedup
 ratios.
 
-Eight later HDF5 candidates were rejected: PyAV batch mux, batch 64 from the
+Nine later HDF5 candidates were rejected: PyAV batch mux, batch 64 from the
 older baseline, packet-mux planner 6/64, direct staging for both layouts,
 sequential Rust cross-device copy, planner 7/64, PyAV `mux_one`, and explicit
-FFmpeg packet buffering. Copy concurrency limits and source/chunk profiles were
-also retained as read-only baseline evidence.
+FFmpeg packet buffering, plus a forkserver follow-up that improved v2.1 but
+missed the v3.0 acceptance threshold. Copy concurrency limits and source/chunk
+profiles were also retained as read-only baseline evidence.
 
 ## Rejected experiments
 
