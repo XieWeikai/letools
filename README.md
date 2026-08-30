@@ -15,6 +15,7 @@ Detailed documentation:
 - [Architecture and module boundaries](docs/ARCHITECTURE.md)
 - [Static planner design](docs/PLANNER.md)
 - [HDF5 source MVP acceptance](docs/HDF5_MVP.md)
+- [HDF5 mapping presets](docs/HDF5_PRESETS.md)
 - [Documentation index](docs/README.md)
 
 ## Quick start
@@ -59,6 +60,14 @@ Validate one dataset or compare two datasets semantically:
 ```bash
 uv run letools validate /data/dataset-v30 --deep
 uv run letools compare /data/original /data/converted --videos
+```
+
+Create an HDF5 mapping preset interactively, then convert with it:
+
+```bash
+uv run letools tools hdf5-preset create /data/hdf5 --name my-dataset
+uv run letools convert /data/hdf5 /data/dataset-v30 \
+  --source-format hdf5 --preset my-dataset --to v3.0 --auto
 ```
 
 Useful conversion controls:
@@ -160,7 +169,7 @@ The current built-in plugins are:
 
 - `LeRobotV21Source`
 - `LeRobotV30Source`
-- `HDF5Source` (Python API with an explicit `HDF5Mapping`)
+- `HDF5Source` (Python API or CLI with an explicit mapping preset)
 
 The current built-in backends write:
 

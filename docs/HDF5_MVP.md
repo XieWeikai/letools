@@ -8,10 +8,12 @@ per episode, frame-aligned numeric arrays, variable-length encoded image arrays,
 a task dataset or fixed task, canonical LeRobot index/time columns, numeric
 statistics, static planning, and batched image-to-video encoding.
 
-It deliberately does not define an XVLA/Soft-Fold preset, infer joint names,
-choose optional robot fields, infer camera dimensions, use irregular source
-timestamps as canonical LeRobot timestamps, compute camera pixel statistics, or
-provide CLI mapping-file discovery. These remain metadata/preset design work.
+It deliberately does not define an XVLA/Soft-Fold semantic preset, infer joint
+names, choose optional robot fields, use irregular source timestamps as canonical
+LeRobot timestamps, or compute camera pixel statistics. A later CLI tools layer
+can now scan a representative episode, decode encoded-image dimensions, and save
+the user's explicit choices as a JSON preset; see
+[HDF5_PRESETS.md](HDF5_PRESETS.md). It does not change these semantic boundaries.
 
 ## Synthetic correctness
 
@@ -27,6 +29,14 @@ mapped numeric vectors, and one JPEG camera. The suite checks:
 
 The complete Python suite at commit `54c7631` reports 19 passed tests. The Rust
 suite and Clippy with warnings denied also pass.
+
+The subsequent preset/TUI layer adds JSON round-trip, representative HDF5
+inspection, scripted terminal interaction, stored-preset selection, CLI parsing,
+and an end-to-end preset-driven HDF5 to v3 conversion with deep validation.
+Slurm job 784 ran the complete suite with 4 CPUs and 8 GiB and reported 23
+passed tests. The authoring and lookup layer is outside backend execution, and
+the conversion coordinator, backends, Arrow primitives, and video primitives
+are unchanged.
 
 ## Real HDF5 smoke test
 

@@ -13,6 +13,8 @@ performance evidence:
   acceptance measurements for the current planner.
 - [HDF5 source MVP](HDF5_MVP.md): implemented scope, real-data smoke checks,
   official-loader evidence, and existing-conversion regression results.
+- [HDF5 mapping presets](HDF5_PRESETS.md): interactive authoring, user/project
+  storage, CLI conversion, JSON schema, and supported source representations.
 - [Current benchmark](../BENCHMARK.md): full-dataset conversion, round-trip,
   comparison throughput, resource use, and correctness results.
 - [Self-improvement protocol](../self-improve/PROTOCOL.md): the required process

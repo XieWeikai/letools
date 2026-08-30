@@ -16,6 +16,13 @@ from letools.planner import (
     plan_and_convert,
     plan_conversion,
 )
+from letools.plugins import HDF5Source
+from letools.tools.hdf5_preset import list_presets, load_preset
+from letools.tools.hdf5_tui import (
+    require_interactive_terminal,
+    run_hdf5_preset_wizard,
+    select_hdf5_preset,
+)
 from letools.validation import compare_datasets, validate_dataset
 
 
@@ -29,14 +36,46 @@ def _print(value: Any) -> None:
     print(json.dumps(asdict(value), indent=2, default=_json_default))
 
 
+def _add_source_options(parser: argparse.ArgumentParser) -> None:
+    """Add source-plugin selection shared by convert and plan."""
+
+    parser.add_argument(
+        "--source-format",
+        choices=["auto", "lerobot", "hdf5"],
+        default="auto",
+        help="source plugin; HDF5 requires a mapping preset",
+    )
+    parser.add_argument(
+        "--preset",
+        help="HDF5 preset name from the user store or an explicit JSON path",
+    )
+
+
+def _open_cli_source(args: argparse.Namespace) -> Path | HDF5Source:
+    """Resolve CLI source options into a path or an explicit source plugin."""
+
+    hdf5_selected = args.source_format == "hdf5" or args.preset is not None
+    if not hdf5_selected:
+        return args.source
+    if args.source_format == "lerobot":
+        raise ValueError("--preset cannot be combined with --source-format lerobot")
+    if args.preset is not None:
+        preset = load_preset(args.preset)
+    else:
+        require_interactive_terminal()
+        preset = select_hdf5_preset()
+    return HDF5Source(args.source, preset.mapping)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the stable CLI surface without embedding execution policy."""
 
     parser = argparse.ArgumentParser(prog="letools")
     commands = parser.add_subparsers(dest="command", required=True)
-    conversion = commands.add_parser("convert", help="Convert a local LeRobot dataset")
+    conversion = commands.add_parser("convert", help="Convert a local dataset")
     conversion.add_argument("source", type=Path)
     conversion.add_argument("destination", type=Path)
+    _add_source_options(conversion)
     conversion.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
     conversion.add_argument("--workers", type=int)
     conversion.add_argument("--video-workers", type=int)
@@ -48,9 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
     conversion.add_argument("--calibration-seconds", type=float, default=10.0)
     conversion.add_argument("--calibration-mb", type=int, default=1024)
     conversion.add_argument("--no-cache", action="store_true")
-    planning = commands.add_parser("plan", help="Plan a local LeRobot conversion")
+    planning = commands.add_parser("plan", help="Plan a local dataset conversion")
     planning.add_argument("source", type=Path)
     planning.add_argument("destination", type=Path)
+    _add_source_options(planning)
     planning.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
     planning.add_argument("--workers", type=int)
     planning.add_argument("--video-workers", type=int)
@@ -69,6 +109,23 @@ def build_parser() -> argparse.ArgumentParser:
     comparison.add_argument("--skip-data", action="store_true")
     comparison.add_argument("--videos", action="store_true")
     commands.add_parser("doctor", help="Report native and FFmpeg providers")
+    utilities = commands.add_parser("tools", help="Run auxiliary dataset utilities")
+    utility_commands = utilities.add_subparsers(dest="tool", required=True)
+    hdf5_preset = utility_commands.add_parser(
+        "hdf5-preset", help="Create and inspect HDF5 mapping presets"
+    )
+    preset_commands = hdf5_preset.add_subparsers(dest="preset_command", required=True)
+    preset_create = preset_commands.add_parser(
+        "create", help="Interactively create a preset from a representative episode"
+    )
+    preset_create.add_argument("source", type=Path)
+    preset_create.add_argument("--name")
+    preset_create.add_argument("--output", type=Path)
+    preset_create.add_argument("--episode-glob", default="*.hdf5")
+    preset_create.add_argument("--overwrite", action="store_true")
+    preset_commands.add_parser("list", help="List presets in the user store")
+    preset_show = preset_commands.add_parser("show", help="Print one preset as JSON")
+    preset_show.add_argument("preset")
     return parser
 
 
@@ -76,10 +133,38 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch one CLI command and return a process exit status."""
 
     args = build_parser().parse_args(argv)
+    if args.command == "tools":
+        if args.preset_command == "create":
+            preset, path = run_hdf5_preset_wizard(
+                args.source,
+                name=args.name,
+                output=args.output,
+                episode_glob=args.episode_glob,
+                overwrite=args.overwrite,
+            )
+            print(json.dumps({"name": preset.name, "path": str(path)}, indent=2))
+            return 0
+        if args.preset_command == "show":
+            print(json.dumps(load_preset(args.preset).to_dict(), indent=2))
+            return 0
+        summaries = [
+            {
+                "name": preset.name,
+                "path": str(path),
+                "description": preset.description,
+                "fps": preset.mapping.fps,
+                "numeric_features": len(preset.mapping.numeric_fields),
+                "video_features": len(preset.mapping.video_fields),
+            }
+            for path, preset in list_presets()
+        ]
+        print(json.dumps(summaries, indent=2))
+        return 0
     if args.command == "convert":
+        source = _open_cli_source(args)
         if args.auto:
             result = plan_and_convert(
-                args.source,
+                source,
                 args.destination,
                 args.to,
                 overrides=PerformanceOverrides(
@@ -101,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             defaults = ConversionConfig()
             result = convert(
-                args.source,
+                source,
                 args.destination,
                 args.to,
                 config=ConversionConfig(
@@ -116,8 +201,9 @@ def main(argv: list[str] | None = None) -> int:
         _print(result)
         return 0
     if args.command == "plan":
+        source = _open_cli_source(args)
         plan = plan_conversion(
-            args.source,
+            source,
             args.destination,
             args.to,
             overrides=PerformanceOverrides(

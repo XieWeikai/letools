@@ -40,6 +40,7 @@ letools plan SOURCE DESTINATION --to VERSION [options]
 letools validate DATASET [--deep]
 letools compare LEFT RIGHT [--skip-data] [--videos]
 letools doctor
+letools tools hdf5-preset create|list|show ...
 ```
 
 All result-producing commands print JSON to standard output. `validate` and
@@ -127,6 +128,8 @@ when resources, storage, or dataset shape are not already characterized.
 | `--calibration-seconds N` | Auto-planner calibration time budget; default 10 seconds |
 | `--calibration-mb N` | Auto-planner read and temporary-write budget; default 1024 MiB each |
 | `--no-cache` | Do not read or write planner cache for this auto run |
+| `--source-format hdf5` | Construct an HDF5 source instead of LeRobot path auto-detection |
+| `--preset NAME_OR_PATH` | Use a stored HDF5 mapping preset; implies HDF5 source selection |
 
 The two target-size options affect only v3 output. They control grouping rather
 than exact encoded file size: Parquet compression and MP4 container overhead
@@ -427,10 +430,36 @@ if not comparison.equal:
     raise RuntimeError(comparison.errors)
 ```
 
-## 9. Convert HDF5 with an explicit mapping
+## 9. Convert HDF5 with a mapping preset
 
 HDF5 has no universal robotics schema. The built-in source therefore requires a
-mapping object and is currently a Python API, not an auto-detected CLI source.
+mapping. Create it interactively from a representative episode:
+
+```bash
+uv run letools tools hdf5-preset create /data/hdf5 --name my-dataset
+uv run letools tools hdf5-preset show my-dataset
+```
+
+Convert with a stored preset:
+
+```bash
+uv run letools convert /data/hdf5 /data/lerobot-v30 \
+  --source-format hdf5 \
+  --preset my-dataset \
+  --to v3.0 \
+  --auto
+```
+
+`--preset` accepts a name from
+`${XDG_CONFIG_HOME:-$HOME/.config}/letools/hdf5-presets/` or an explicit JSON
+path. In a TTY, `--source-format hdf5` without `--preset` displays a selection
+menu. Slurm and other non-interactive jobs must pass `--preset`. `letools plan`
+accepts the same two source options. See [HDF5_PRESETS.md](HDF5_PRESETS.md) for
+the complete wizard, storage, schema, and compatibility reference.
+
+### Python API
+
+The underlying API remains available when mappings are generated in code.
 Each file matched by `episode_glob` is one episode. Every mapped numeric or video
 dataset must have the same positive first dimension in that file.
 
@@ -501,15 +530,15 @@ camera pixels are not decoded merely to create image statistics. JPEG-like
 variable-length values are read in batches and encoded according to
 `VideoEncodingConfig`.
 
-This MVP does not include an XVLA/Soft-Fold preset and does not decide which of
-`qpos`, `qvel`, `eef`, effort, base action, or source-clock fields belong in the
-final dataset. It also does not infer joint names. Those are dataset semantics
-and must remain explicit until a preset and metadata policy are agreed.
+The wizard offers editable conventional target-name suggestions, but it does not
+decide which of `qpos`, `qvel`, `eef`, effort, base action, or source-clock fields
+belong in the final dataset. It also does not infer joint names. Those remain
+explicit dataset semantics recorded by the user in the preset.
 
 The static planner accepts an `HDF5Source` object. Its cache fingerprint includes
 the source class and a SHA-256 of the complete mapping, so two semantic mappings
-cannot share a calibrated plan. `letools plan` cannot construct this object from
-CLI arguments yet.
+cannot share a calibrated plan. The CLI constructs the same object from the
+selected preset before planning.
 
 ## 10. Custom source plugins
 

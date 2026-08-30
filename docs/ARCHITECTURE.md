@@ -30,6 +30,8 @@ plugins or third-party backends by entry point.
               | CLI (cli.py) | Python API (__init__) |
               +-----------------+-----------------+
                                 |
+                   HDF5 tools: inspect -> preset
+                                |
                 +---------------+---------------+
                 |                               |
                 v                               v
@@ -122,6 +124,8 @@ primitive that owns the whole operation.
 | `plugins/base.py` | `DatasetSource` read protocol | Target writing |
 | `plugins/lerobot.py` | v2.1/v3.0 metadata parsing and logical slicing | Target writing and concurrency policy |
 | `plugins/hdf5.py` | Explicit HDF5 mapping, schema scan, Arrow reads, and frame batches | Target layout or robot-specific presets |
+| `tools/hdf5_preset.py` | Versioned preset JSON, user-store lookup, read-only HDF5 inventory | Robot semantic decisions or conversion execution |
+| `tools/hdf5_tui.py` | Interactive mapping authoring and stored-preset selection | Source reading, backend policy, or silent inference |
 | `backends/base.py` | Backend write protocol | Source-format parsing |
 | `backends/v21.py` | v2.1 paths, metadata, per-episode Parquet/video output | v3 layout parsing |
 | `backends/v30.py` | v3 grouping, offsets, metadata, aggregate stats | v2 layout parsing |
@@ -169,9 +173,9 @@ container internals. The default implementations adapt path-based Parquet and
 MP4 sources and cache resource inspection. Other formats override them.
 
 `open_dataset()` reads `meta/info.json` and dispatches only `v2.1` and `v3.0`.
-`HDF5Source` and custom sources are passed as objects to `convert()` or
-`plan_conversion()`; there is currently no CLI registration or mapping-file
-mechanism.
+The Python API passes `HDF5Source` and custom sources as objects. The CLI uses a
+versioned HDF5 preset to construct the same `HDF5Source`; it does not add HDF5
+guessing to `open_dataset()`.
 
 Source implementations must provide stable episode order, contiguous indices
 starting at zero, accurate lengths and totals, consistent Arrow schemas, and a
@@ -271,6 +275,8 @@ parameters are absent for this direction.
 
 ```text
 explicit HDF5Mapping + one HDF5 file per episode
+explicit JSON preset or Python mapping
+    -> construct HDF5Mapping
     -> metadata/schema scan and frame-count validation
     -> numeric datasets become fixed-shape Arrow columns
     -> canonical timestamp/index/task columns are generated
@@ -292,6 +298,13 @@ Canonical `timestamp`, `frame_index`, `episode_index`, global `index`, and
 timestamp can be preserved under another explicitly mapped target key. This is
 a mechanical base policy, not an XVLA preset or a decision about joint names,
 field selection, or final task metadata.
+
+The `tools` package sits before this pipeline. Its scanner reads one episode's
+dataset inventory and encoded-image dimensions; its TUI records user choices in
+a portable JSON preset. Loading a preset is a pure adapter from JSON to
+`HDF5Mapping`. All-episode validation remains owned by `HDF5Source`, and target
+metadata layout remains owned by the backend. Consequently, the authoring tool
+is outside timed conversion stages and adds no per-frame or per-episode overhead.
 
 ## 11. Planner interaction
 
