@@ -139,6 +139,7 @@ def _v30_video_jobs(source: DatasetSource, target_mb: int = 32) -> list[_Job]:
                     root / f"video-{index:04d}.mp4",
                     source.metadata.fps,
                     VideoEncodingConfig(),
+                    local_staging=False,
                 )
 
             jobs.append((input_bytes, run))

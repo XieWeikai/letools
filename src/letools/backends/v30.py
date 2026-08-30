@@ -177,7 +177,10 @@ class LeRobotV30Backend(DatasetBackend):
                 list(
                     pool.map(
                         lambda job: write_media_group(
-                            *job, source.metadata.fps, config.video_encoding
+                            *job,
+                            source.metadata.fps,
+                            config.video_encoding,
+                            local_staging=False,
                         ),
                         jobs,
                     )

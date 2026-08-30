@@ -146,3 +146,38 @@ def test_frame_sequences_allow_explicit_mpeg4_transcoding(tmp_path: Path) -> Non
     with av.open(str(output)) as container:
         assert container.streams.video[0].codec_context.name == "mpeg4"
         assert len(list(container.decode(video=0))) == 5
+
+
+def test_frame_sequences_can_write_directly_to_dataset_staging(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = BytesFrameSequence(_make_jpegs(10), 32, 24)
+    output = tmp_path / "direct.mp4"
+
+    def unexpected_move(*_args, **_kwargs) -> None:
+        raise AssertionError("direct staging must not move a local temporary")
+
+    monkeypatch.setattr("letools._video.shutil.move", unexpected_move)
+    write_media_group(
+        [source], output, 10, VideoEncodingConfig(), local_staging=False
+    )
+
+    with av.open(str(output)) as container:
+        assert len(list(container.decode(video=0))) == 5
+
+
+def test_direct_frame_sequence_failure_removes_partial_output(tmp_path: Path) -> None:
+    source = BytesFrameSequence(_make_jpegs(10), 32, 24)
+    source.frame_count += 1
+    output = tmp_path / "partial.mp4"
+
+    try:
+        write_media_group(
+            [source], output, 10, VideoEncodingConfig(), local_staging=False
+        )
+    except ValueError as error:
+        assert "batch" in str(error)
+    else:
+        raise AssertionError("invalid frame count did not fail")
+
+    assert not output.exists()

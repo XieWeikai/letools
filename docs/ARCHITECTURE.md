@@ -362,6 +362,12 @@ When encoding occurs, the backend records the selected codec, pixel format, FPS,
 and lack of audio in the target video feature metadata. Remux-only conversions
 preserve the source codec metadata unchanged.
 
+FrameSequence output placement follows target granularity. V2.1 first muxes its
+many small episode files on node-local storage, then copies them into the hidden
+dataset staging tree. V3 writes its larger grouped shards directly into that
+tree and removes a partial shard on failure. In both cases the conversion
+coordinator remains the only dataset publication boundary.
+
 ## 13. Validation boundary
 
 Conversion's built-in gate is shallow validation: metadata totals, contiguous

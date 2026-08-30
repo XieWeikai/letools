@@ -195,6 +195,8 @@ def _encode_frame_sequences(
     output: Path,
     fps: int,
     encoding: VideoEncodingConfig,
+    *,
+    local_staging: bool,
 ) -> None:
     """Decode batches of still images and encode one continuous video shard."""
 
@@ -214,9 +216,13 @@ def _encode_frame_sequences(
     decoder_name = {"jpg": "mjpeg", "jpeg": "mjpeg"}.get(next(iter(formats)), next(iter(formats)))
     decoder = av.CodecContext.create(decoder_name, "r")
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(suffix=output.suffix, delete=False) as handle:
-        temporary = Path(handle.name)
+    if local_staging:
+        with tempfile.NamedTemporaryFile(suffix=output.suffix, delete=False) as handle:
+            temporary = Path(handle.name)
+    else:
+        temporary = output
     container = None
+    completed = False
     try:
         container = av.open(str(temporary), mode="w")
         stream = container.add_stream(encoding.codec, rate=fps)
@@ -255,11 +261,16 @@ def _encode_frame_sequences(
             container.mux(packet)
         container.close()
         container = None
-        shutil.move(temporary, output)
+        if local_staging:
+            shutil.move(temporary, output)
+        completed = True
     finally:
         if container is not None:
             container.close()
-        temporary.unlink(missing_ok=True)
+        if local_staging:
+            temporary.unlink(missing_ok=True)
+        elif not completed:
+            output.unlink(missing_ok=True)
 
 
 def _mux_jpeg_sequences(
@@ -267,6 +278,8 @@ def _mux_jpeg_sequences(
     output: Path,
     fps: int,
     encoding: VideoEncodingConfig,
+    *,
+    local_staging: bool,
 ) -> None:
     """Mux complete JPEG values as timestamped MJPEG packets without decoding."""
 
@@ -281,9 +294,13 @@ def _mux_jpeg_sequences(
         raise ValueError("A video shard cannot mix frame dimensions")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(suffix=output.suffix, delete=False) as handle:
-        temporary = Path(handle.name)
+    if local_staging:
+        with tempfile.NamedTemporaryFile(suffix=output.suffix, delete=False) as handle:
+            temporary = Path(handle.name)
+    else:
+        temporary = output
     container = None
+    completed = False
     try:
         container = av.open(str(temporary), mode="w")
         stream = container.add_stream("mjpeg", rate=fps)
@@ -316,11 +333,16 @@ def _mux_jpeg_sequences(
                 raise ValueError("Frame source ended before its declared frame count")
         container.close()
         container = None
-        shutil.move(temporary, output)
+        if local_staging:
+            shutil.move(temporary, output)
+        completed = True
     finally:
         if container is not None:
             container.close()
-        temporary.unlink(missing_ok=True)
+        if local_staging:
+            temporary.unlink(missing_ok=True)
+        elif not completed:
+            output.unlink(missing_ok=True)
 
 
 def write_media_group(
@@ -328,6 +350,8 @@ def write_media_group(
     output: Path,
     fps: int,
     encoding: VideoEncodingConfig,
+    *,
+    local_staging: bool = True,
 ) -> None:
     """Write one v3 media shard while preserving the encoded-video fast path."""
 
@@ -339,9 +363,13 @@ def write_media_group(
     if all(isinstance(media, FrameSequence) for media in inputs):
         formats = {media.encoded_format.lower() for media in inputs}
         if encoding.codec == "mjpeg" and formats <= {"jpg", "jpeg"}:
-            _mux_jpeg_sequences(inputs, output, fps, encoding)
+            _mux_jpeg_sequences(
+                inputs, output, fps, encoding, local_staging=local_staging
+            )
             return
-        _encode_frame_sequences(inputs, output, fps, encoding)
+        _encode_frame_sequences(
+            inputs, output, fps, encoding, local_staging=local_staging
+        )
         return
     raise TypeError("A media group cannot mix video slices and frame sequences")
 

@@ -6,6 +6,10 @@ Eleven accepted optimizations are present on `/workspace/shrelic/letools/main`.
 All conversions and full comparisons ran as single-node Slurm jobs within the
 protocol resource ceiling.
 
+Five additional HDF5-source optimizations are accepted on
+`feat/hdf5-source-mvp`; that feature campaign is intentionally not merged to
+`main` yet.
+
 ## Accepted optimizations
 
 | Commit | Change | Target result |
@@ -24,6 +28,30 @@ protocol resource ceiling.
 
 Each percentage compares the candidate median with the current-main baseline
 for that iteration. Results from different workloads are not multiplied.
+
+## HDF5 source campaign
+
+The fixed XVLA Soft Fold workload contains 108 episodes, 125412 trajectory
+frames, three JPEG cameras, 376236 encoded frames, and 20.7 GiB of HDF5 input.
+
+| Commit | Change | V2.1 result | V3.0 result |
+| --- | --- | ---: | ---: |
+| `e200c49` | Retain HDF5 frame readers across batches | +9.5% | +7.2% |
+| `1c59ca7` | Packet-mux JPEG values without transcoding | 2.70x | 3.07x |
+| `2f37e36` | Pass HDF5 buffers without a bytes copy | +16.6% | +11.7% |
+| `720b66e` | Balance frame batches at 48 | +5.3% | +4.2% |
+| feature tip | Write grouped v3 shards directly to staging | no regression | +5.6% |
+
+At the final fixed eight-worker setting, v2.1 converts in a 19.83 second
+seven-sample regression median (5.446 episodes/s, 6324.4 frames/s). The final
+v3 target median is 19.49 seconds (5.541 episodes/s, 6434.7 frames/s). These are measured
+end-to-end CLI wall times and are not products of per-commit speedup ratios.
+
+Eight later HDF5 candidates were rejected: PyAV batch mux, batch 64 from the
+older baseline, packet-mux planner 6/64, direct staging for both layouts,
+sequential Rust cross-device copy, planner 7/64, PyAV `mux_one`, and explicit
+FFmpeg packet buffering. Copy concurrency limits and source/chunk profiles were
+also retained as read-only baseline evidence.
 
 ## Rejected experiments
 
