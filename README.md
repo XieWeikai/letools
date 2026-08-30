@@ -101,6 +101,11 @@ letools convert /data/hdf5 /data/dataset-v30 \
   --source-format hdf5 --preset my-dataset --to v3.0 --auto
 ```
 
+JPEG-valued HDF5 cameras are preserved as MJPEG packets by default. This avoids
+lossy transcoding and is substantially faster, but the generated videos remain
+close to the source JPEG size. Python callers can select compact MPEG-4 output
+through `VideoEncodingConfig`; see [detailed usage](docs/USAGE.md#8-python-api).
+
 | Option | Meaning |
 | --- | --- |
 | `--to VERSION` | Required target; accepts `v2.1`, `2.1`, `v3.0`, or `3.0` |

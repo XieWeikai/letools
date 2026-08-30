@@ -287,7 +287,8 @@ explicit JSON preset or Python mapping
     -> variable-length JPEG values become HDF5FrameSequence batches
     -> v2.1 backend: one Parquet/video file per episode
        or v3 backend: size-grouped Parquet/video shards
-    -> PyAV decodes JPEG batches and encodes target MP4 streams
+    -> JPEG payloads are timestamped and muxed directly into MJPEG MP4 streams
+       (other format/codec combinations use PyAV decode/encode)
     -> target metadata records actual encoding settings
 ```
 

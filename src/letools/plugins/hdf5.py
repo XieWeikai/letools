@@ -379,8 +379,8 @@ class HDF5Source(DatasetSource):
                 "info": {
                     "video.height": field.height,
                     "video.width": field.width,
-                    "video.codec": "mpeg4",
-                    "video.pix_fmt": "yuv420p",
+                    "video.codec": "mjpeg",
+                    "video.pix_fmt": "yuvj420p",
                     "video.is_depth_map": False,
                     "video.fps": self.mapping.fps,
                     "video.channels": 3,
@@ -388,8 +388,8 @@ class HDF5Source(DatasetSource):
                 },
                 "video_info": {
                     "video.fps": self.mapping.fps,
-                    "video.codec": "mpeg4",
-                    "video.pix_fmt": "yuv420p",
+                    "video.codec": "mjpeg",
+                    "video.pix_fmt": "yuvj420p",
                     "video.is_depth_map": False,
                     "has_audio": False,
                 },

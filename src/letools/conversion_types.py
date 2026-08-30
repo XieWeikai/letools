@@ -13,8 +13,8 @@ from letools.telemetry import StageMetrics
 class VideoEncodingConfig:
     """Encoding policy used only when a source provides image frames."""
 
-    codec: str = "mpeg4"
-    pixel_format: str = "yuv420p"
+    codec: str = "mjpeg"
+    pixel_format: str = "yuvj420p"
     batch_frames: int = 32
     codec_threads: int = 1
 

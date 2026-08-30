@@ -1,3 +1,4 @@
+import hashlib
 from fractions import Fraction
 from pathlib import Path
 
@@ -108,6 +109,7 @@ def test_frame_sequences_encode_in_batches_for_both_layouts(tmp_path: Path) -> N
 
     with av.open(str(grouped)) as container:
         decoded = list(container.decode(video=0))
+        assert container.streams.video[0].codec_context.name == "mjpeg"
     assert len(decoded) == 8
     assert first.requests == [(0, 2), (2, 4), (4, 5)]
     assert second.requests == [(0, 2), (2, 3)]
@@ -121,3 +123,22 @@ def test_frame_sequences_encode_in_batches_for_both_layouts(tmp_path: Path) -> N
         assert len(list(container.decode(video=0))) == 5
     with av.open(str(second_output)) as container:
         assert len(list(container.decode(video=0))) == 3
+
+    expected = hashlib.sha256(b"".join((*first._frames, *second._frames))).hexdigest()
+    actual = packet_digests([VideoSlice(grouped, 0.0, 0.8)])[0]
+    assert actual == expected
+
+
+def test_frame_sequences_allow_explicit_mpeg4_transcoding(tmp_path: Path) -> None:
+    source = BytesFrameSequence(_make_jpegs(10), 32, 24)
+    output = tmp_path / "transcoded.mp4"
+    write_media_group(
+        [source],
+        output,
+        10,
+        VideoEncodingConfig(codec="mpeg4", pixel_format="yuv420p", batch_frames=2),
+    )
+
+    with av.open(str(output)) as container:
+        assert container.streams.video[0].codec_context.name == "mpeg4"
+        assert len(list(container.decode(video=0))) == 5

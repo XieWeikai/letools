@@ -367,13 +367,15 @@ directory chunk in generated layouts and is currently configurable only through
 the Python API.
 
 Sources that provide `FrameSequence` media use `ConversionConfig.video_encoding`.
-The default is the portable FFmpeg `mpeg4` encoder with `yuv420p`, batches of 32
-source images, and one codec thread per output job. These settings do not affect
+The default writes JPEG sources directly as an MJPEG/yuvj420p MP4 stream in
+batches of 32, preserving every source JPEG packet without pixel decoding or
+lossy re-encoding. This is the fastest and highest-fidelity path, but its output
+is normally much larger than MPEG-4 transcoding. These settings do not affect
 LeRobot-to-LeRobot conversion: `VideoSlice` inputs continue to be remuxed without
-decoding or re-encoding. Advanced Python callers may supply
-`VideoEncodingConfig(codec=..., pixel_format=..., batch_frames=...,
-codec_threads=...)`; the selected encoder must exist in the installed PyAV
-runtime.
+decoding or re-encoding. Advanced Python callers may request compact lossy output
+with `VideoEncodingConfig(codec="mpeg4", pixel_format="yuv420p", ...)`; non-JPEG
+sources and non-MJPEG codecs use the decode/encode fallback, and the selected
+encoder must exist in the installed PyAV runtime.
 
 ### Plan only
 
@@ -534,8 +536,9 @@ The source generates canonical `timestamp = frame_index / fps`, `frame_index`,
 `episode_index`, global `index`, and `task_index`. Map a raw source timestamp to
 another target key when it must be retained. Numeric statistics are computed;
 camera pixels are not decoded merely to create image statistics. JPEG-like
-variable-length values are read in batches and encoded according to
-`VideoEncodingConfig`.
+variable-length values are read in batches and, by default, muxed directly as
+MJPEG packets. Other source formats or explicitly selected codecs use the
+decode/encode path configured by `VideoEncodingConfig`.
 
 The wizard offers editable conventional target-name suggestions, but it does not
 decide which of `qpos`, `qvel`, `eef`, effort, base action, or source-clock fields

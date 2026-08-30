@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -15,7 +16,7 @@ import pyarrow.parquet as pq
 
 from letools._arrow import canonical_data_schema, cast_data_table, normalize_feature_shapes
 from letools._video import packet_digests, video_duration
-from letools.model import VideoSlice
+from letools.model import FrameSequence, VideoSlice
 from letools.plugins import DatasetSource, open_dataset
 
 
@@ -170,9 +171,14 @@ def _nested_close(left: Any, right: Any) -> bool:
 
 def _video_digest_map(source: DatasetSource) -> dict[tuple[int, str], str]:
     grouped: dict[tuple[str, Path], list[tuple[int, VideoSlice]]] = defaultdict(list)
+    frame_sequences: list[tuple[int, str, FrameSequence]] = []
     for episode in source.episodes:
         for key, video in episode.videos.items():
-            grouped[(key, video.path)].append((episode.index, video))
+            if isinstance(video, VideoSlice):
+                grouped[(key, video.path)].append((episode.index, video))
+            else:
+                frame_sequences.append((episode.index, key, video))
+
     def digest_group(
         item: tuple[tuple[str, Path], list[tuple[int, VideoSlice]]],
     ) -> list[tuple[tuple[int, str], str]]:
@@ -184,10 +190,20 @@ def _video_digest_map(source: DatasetSource) -> dict[tuple[int, str], str]:
             for (episode_index, _), digest in zip(items, digests, strict=True)
         ]
 
+    def digest_frames(item: tuple[int, str, FrameSequence]) -> tuple[tuple[int, str], str]:
+        episode_index, key, sequence = item
+        digest = hashlib.sha256()
+        for batch in sequence.iter_batches(256):
+            for frame in batch:
+                digest.update(frame)
+        return (episode_index, key), digest.hexdigest()
+
     result = {}
     with ThreadPoolExecutor(max_workers=min(2, len(grouped) or 1)) as pool:
         for values in pool.map(digest_group, grouped.items()):
             result.update(values)
+    with ThreadPoolExecutor(max_workers=min(2, len(frame_sequences) or 1)) as pool:
+        result.update(pool.map(digest_frames, frame_sequences))
     return result
 
 

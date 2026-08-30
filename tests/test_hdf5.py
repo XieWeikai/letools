@@ -104,6 +104,8 @@ def test_hdf5_source_converts_to_both_versions(tmp_path: Path) -> None:
     assert validate_dataset(v21, deep=True).valid
     assert validate_dataset(v30, deep=True).valid
     assert compare_datasets(v21, v30).equal
+    assert compare_datasets(source, v21, check_videos=True).equal
+    assert compare_datasets(source, v30, check_videos=True).equal
     assert _decoded_frames(v21) == [4, 3]
     # Both v3 episodes share a shard, so each metadata slice references all
     # decoded shard frames even though its timestamp range remains per episode.

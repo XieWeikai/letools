@@ -176,7 +176,7 @@ def apply_encoding_metadata(
     """Record the actual encoded stream settings in a target video feature."""
 
     namespaces = [feature.setdefault("info", {})]
-    if include_legacy_video_info:
+    if include_legacy_video_info or "video_info" in feature:
         namespaces.append(feature.setdefault("video_info", {}))
     for metadata in namespaces:
         metadata.update(
@@ -262,6 +262,67 @@ def _encode_frame_sequences(
         temporary.unlink(missing_ok=True)
 
 
+def _mux_jpeg_sequences(
+    inputs: Sequence[FrameSequence],
+    output: Path,
+    fps: int,
+    encoding: VideoEncodingConfig,
+) -> None:
+    """Mux complete JPEG values as timestamped MJPEG packets without decoding."""
+
+    if not inputs:
+        raise ValueError("At least one frame sequence is required")
+    if fps <= 0:
+        raise ValueError("Video FPS must be positive")
+    if encoding.batch_frames <= 0:
+        raise ValueError("Video batch size must be positive")
+    width, height = inputs[0].width, inputs[0].height
+    if any((sequence.width, sequence.height) != (width, height) for sequence in inputs):
+        raise ValueError("A video shard cannot mix frame dimensions")
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=output.suffix, delete=False) as handle:
+        temporary = Path(handle.name)
+    container = None
+    try:
+        container = av.open(str(temporary), mode="w")
+        stream = container.add_stream("mjpeg", rate=fps)
+        stream.width = width
+        stream.height = height
+        stream.pix_fmt = encoding.pixel_format
+        time_base = Fraction(1, fps)
+        stream.time_base = time_base
+        frame_index = 0
+        for sequence in inputs:
+            produced = 0
+            for batch in sequence.iter_batches(encoding.batch_frames):
+                expected = min(encoding.batch_frames, sequence.frame_count - produced)
+                if len(batch) != expected:
+                    raise ValueError(
+                        f"Frame source returned {len(batch)} frames for a batch of {expected}"
+                    )
+                for encoded in batch:
+                    packet = av.Packet(encoded)
+                    packet.stream = stream
+                    packet.pts = frame_index
+                    packet.dts = frame_index
+                    packet.duration = 1
+                    packet.time_base = time_base
+                    packet.is_keyframe = True
+                    container.mux(packet)
+                    frame_index += 1
+                    produced += 1
+            if produced != sequence.frame_count:
+                raise ValueError("Frame source ended before its declared frame count")
+        container.close()
+        container = None
+        shutil.move(temporary, output)
+    finally:
+        if container is not None:
+            container.close()
+        temporary.unlink(missing_ok=True)
+
+
 def write_media_group(
     inputs: Sequence[MediaInput],
     output: Path,
@@ -276,6 +337,10 @@ def write_media_group(
         concatenate_videos([media.path for media in inputs], output)
         return
     if all(isinstance(media, FrameSequence) for media in inputs):
+        formats = {media.encoded_format.lower() for media in inputs}
+        if encoding.codec == "mjpeg" and formats <= {"jpg", "jpeg"}:
+            _mux_jpeg_sequences(inputs, output, fps, encoding)
+            return
         _encode_frame_sequences(inputs, output, fps, encoding)
         return
     raise TypeError("A media group cannot mix video slices and frame sequences")
@@ -298,7 +363,7 @@ def write_episode_media(
         return
     if all(isinstance(media, FrameSequence) for media, _ in outputs):
         for media, output in outputs:
-            _encode_frame_sequences([media], output, fps, encoding)
+            write_media_group([media], output, fps, encoding)
         return
     raise TypeError("A media group cannot mix video slices and frame sequences")
 
