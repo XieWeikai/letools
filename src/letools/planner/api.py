@@ -21,7 +21,7 @@ from letools.planner.types import (
 from letools.plugins import DatasetSource, open_dataset
 
 
-_PLANNER_ALGORITHM_VERSION = 3
+_PLANNER_ALGORITHM_VERSION = 5
 
 
 def _normalize_version(version: str) -> str:
@@ -131,6 +131,10 @@ def plan_conversion(
             calibration or CalibrationOptions(),
             fixed_data_workers=overrides.workers is not None,
             fixed_video_workers=overrides.video_workers is not None,
+            network_io=(
+                source_storage.storage_class == "network"
+                or destination_storage.storage_class == "network"
+            ),
         )
         if use_cache and measurements:
             try:

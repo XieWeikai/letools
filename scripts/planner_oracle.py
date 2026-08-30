@@ -160,13 +160,10 @@ def run(args: argparse.Namespace) -> dict:
     planner_video_time = (
         _selected_time(video_medians, selected_video) if video_medians else 0.0
     )
-    # Video factories benchmark one representative camera. Scale that stage back
-    # to the complete dataset before combining it with the data-stage result.
-    video_stage_weight = len(source.metadata.video_keys)
-    oracle_total = data_best_time + video_best_time * video_stage_weight
-    planner_total = planner_data_time + planner_video_time * video_stage_weight
+    oracle_total = data_best_time + video_best_time
+    planner_total = planner_data_time + planner_video_time
     report = {
-        "schema_version": 2,
+        "schema_version": 3,
         "source": str(source.root),
         "destination_parent": str(args.destination_parent),
         "target_version": plan.target_version,
@@ -182,7 +179,7 @@ def run(args: argparse.Namespace) -> dict:
                 "workers": video_best[0],
                 "target_size_mb": video_best[1],
                 "median_seconds": video_best_time,
-                "dataset_stage_weight": video_stage_weight,
+                "dataset_stage_weight": 1,
             },
             "combined_stage_seconds": oracle_total,
         },

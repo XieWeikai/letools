@@ -16,6 +16,7 @@ from letools.planner.calibrate import (
     _Budget,
     _extrapolate_worker_ceiling,
     _measure_stage,
+    _sample_comparison_batches,
     _sample_worker_batches,
 )
 from letools.planner.heuristic import (
@@ -39,6 +40,8 @@ def test_balanced_group_target_accounts_for_worker_scheduling() -> None:
     mib = 1024**2
     assert _target_for_balanced_groups((32, 64, 100, 128, 200), 302 * mib, 2, 100) == 128
     assert _target_for_balanced_groups((64, 100, 128, 200), 302 * mib, 4, 100) == 100
+    assert _target_for_balanced_groups((64, 100, 200, 256, 400), 3564 * mib, 8, 200) == 256
+    assert _target_for_balanced_groups((64, 100, 200, 256, 400), 3564 * mib, 16, 200) == 256
 
 
 def test_read_only_plan_profiles_dataset_and_storage(tmp_path) -> None:
@@ -137,6 +140,9 @@ def test_worker_batches_fill_each_candidate_within_budget() -> None:
     assert sum(size for batch in batches for size, _ in batch) == 120
     assert _sample_worker_batches(jobs, (1, 3, 8), max_bytes=119) == batches[:2]
     assert _sample_worker_batches([], (1,), max_bytes=120) == []
+    comparison = _sample_comparison_batches(jobs[:5], (1, 5), max_bytes=60)
+    assert [len(batch) for batch in comparison] == [1, 5]
+
 
 
 def test_worker_extrapolation_requires_unsaturated_scaling() -> None:

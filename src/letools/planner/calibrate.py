@@ -18,8 +18,7 @@ from letools._video import concatenate_videos, split_video
 from letools.planner.heuristic import (
     VIDEO_TARGETS_MB,
     HeuristicChoice,
-    _target_for_parallelism,
-    worker_candidates,
+    _target_for_balanced_groups,
 )
 from letools.planner.types import CalibrationMeasurement, CalibrationOptions
 from letools.plugins import DatasetSource
@@ -116,68 +115,42 @@ def _v21_data_jobs(source: DatasetSource) -> list[_Job]:
 def _v30_video_jobs(source: DatasetSource, target_mb: int = 32) -> list[_Job]:
     if not source.metadata.video_keys:
         return []
-    key = source.metadata.video_keys[0]
     episodes = list(source.episodes)
-    sizes = [episode.videos[key].path.stat().st_size for episode in episodes]
-    groups = _group_by_limit(episodes, sizes, target_mb * _MIB)
     jobs: list[_Job] = []
-    for group in groups:
-        paths = tuple(episode.videos[key].path for episode in group)
-        input_bytes = sum(path.stat().st_size for path in paths)
+    for key in source.metadata.video_keys:
+        sizes = [episode.videos[key].path.stat().st_size for episode in episodes]
+        groups = _group_by_limit(episodes, sizes, target_mb * _MIB)
+        for group in groups:
+            paths = tuple(episode.videos[key].path for episode in group)
+            input_bytes = sum(path.stat().st_size for path in paths)
 
-        def run(root: Path, index: int, inputs=paths) -> None:
-            concatenate_videos(inputs, root / f"video-{index:04d}.mp4")
+            def run(root: Path, index: int, inputs=paths) -> None:
+                concatenate_videos(inputs, root / f"video-{index:04d}.mp4")
 
-        jobs.append((input_bytes, run))
+            jobs.append((input_bytes, run))
     return jobs
 
 
 def _v21_video_jobs(source: DatasetSource) -> list[_Job]:
     if not source.metadata.video_keys:
         return []
-    key = source.metadata.video_keys[0]
-    groups: dict[Path, list] = defaultdict(list)
-    for episode in source.episodes:
-        groups[episode.videos[key].path].append(episode)
     jobs: list[_Job] = []
-    for path, episodes in groups.items():
-        selected = tuple((episode.videos[key], episode.index) for episode in episodes)
+    for key in source.metadata.video_keys:
+        groups: dict[Path, list] = defaultdict(list)
+        for episode in source.episodes:
+            groups[episode.videos[key].path].append(episode)
+        for path, episodes in groups.items():
+            selected = tuple((episode.videos[key], episode.index) for episode in episodes)
 
-        def run(root: Path, index: int, slices=selected, source_path=path) -> None:
-            directory = root / f"video-{index:04d}"
-            split_video(
-                source_path,
-                [(video_slice, directory / f"{episode_index}.mp4") for video_slice, episode_index in slices],
-            )
+            def run(root: Path, index: int, slices=selected, source_path=path) -> None:
+                directory = root / f"video-{index:04d}"
+                split_video(
+                    source_path,
+                    [(video_slice, directory / f"{episode_index}.mp4") for video_slice, episode_index in slices],
+                )
 
-        jobs.append((path.stat().st_size, run))
+            jobs.append((path.stat().st_size, run))
     return jobs
-
-
-def _sample_job_batches(
-    jobs: list[_Job],
-    per_run_bytes: int,
-    max_tasks: int,
-    count: int,
-) -> list[list[_Job]]:
-    if not jobs:
-        return []
-    batches: list[list[_Job]] = []
-    cursor = 0
-    for _ in range(count):
-        selected: list[_Job] = []
-        total = 0
-        while cursor < len(jobs):
-            job = jobs[cursor]
-            if selected and (total + job[0] > per_run_bytes or len(selected) >= max_tasks):
-                break
-            selected.append(job)
-            total += job[0]
-            cursor += 1
-        if not selected:
-            break
-        batches.append(selected)
-    return batches
 
 
 def _sample_worker_batches(
@@ -199,6 +172,28 @@ def _sample_worker_batches(
         cursor += workers
         consumed += input_bytes
     return batches
+
+
+def _sample_comparison_batches(
+    jobs: list[_Job],
+    worker_values: tuple[int, ...],
+    max_bytes: int,
+) -> list[list[_Job]]:
+    disjoint = _sample_worker_batches(jobs, worker_values, max_bytes)
+    if len(disjoint) == len(worker_values):
+        return disjoint
+
+    prefixes: list[list[_Job]] = []
+    consumed = 0
+    for workers in worker_values:
+        selected = jobs[:workers]
+        if len(selected) < workers:
+            return disjoint
+        consumed += sum(job[0] for job in selected)
+        if consumed > max_bytes:
+            return disjoint
+        prefixes.append(selected)
+    return prefixes
 
 
 def _run_jobs(jobs: list[_Job], workers: int, output: Path) -> float:
@@ -282,6 +277,7 @@ def calibrate_workers(
     options: CalibrationOptions,
     fixed_data_workers: bool = False,
     fixed_video_workers: bool = False,
+    network_io: bool = False,
 ) -> tuple[HeuristicChoice, tuple[CalibrationMeasurement, ...]]:
     if not options.enabled:
         return choice, ()
@@ -296,7 +292,7 @@ def calibrate_workers(
     data_bytes = sum(data_paths.values())
     video_bytes = sum(video_paths.values())
     total_bytes = data_bytes + video_bytes
-    if total_bytes < 64 * _MIB:
+    if total_bytes < 64 * _MIB or (not video_bytes and data_bytes < 512 * _MIB):
         return choice, ()
 
     root = Path(tempfile.mkdtemp(prefix=".letools-calibration-", dir=destination_parent))
@@ -321,16 +317,7 @@ def calibrate_workers(
                 )
             )
             data_budget = options.max_read_bytes if not video_bytes else options.max_read_bytes // 2
-            repeated_bytes = sum(job[0] for job in data_jobs) * len(data_values)
-            if repeated_bytes <= data_budget:
-                data_batches = [data_jobs for _ in data_values]
-            else:
-                data_batches = _sample_job_batches(
-                    data_jobs,
-                    max(16 * _MIB, data_budget // max(1, len(data_values))),
-                    min(cpu_limit * 2, 32),
-                    len(data_values),
-                )
+            data_batches = _sample_comparison_batches(data_jobs, data_values, data_budget)
             data_pairs = [
                 (workers, jobs)
                 for workers, jobs in zip(data_values, data_batches, strict=False)
@@ -373,7 +360,10 @@ def calibrate_workers(
             root,
             budget,
         )
-        extrapolated = _extrapolate_worker_ceiling(values, max(video_values))
+        requested_video_workers = (
+            min(max(video_values), 16) if network_io else max(video_values)
+        )
+        extrapolated = _extrapolate_worker_ceiling(values, requested_video_workers)
         if extrapolated is not None and not fixed_video_workers:
             selected_video = extrapolated
             extrapolated_video = True
@@ -386,15 +376,14 @@ def calibrate_workers(
     video_workers = selected_video or choice.video_workers
     video_target = choice.video_file_size_mb
     if target_version == "v3.0" and selected_video and not fixed_video_workers:
-        bytes_per_camera = video_bytes // max(1, len(source.metadata.video_keys))
-        video_target = _target_for_parallelism(
-            VIDEO_TARGETS_MB,
-            bytes_per_camera,
-            video_workers,
-            choice.video_file_size_mb or 200,
-            tasks_per_worker=3,
-            maximize_tasks_when_insufficient=True,
-        )
+        video_target = 100
+        if network_io:
+            video_target = _target_for_balanced_groups(
+                VIDEO_TARGETS_MB,
+                video_bytes,
+                video_workers,
+                choice.video_file_size_mb or 200,
+            )
     estimated_video_tasks = choice.estimated_video_tasks
     if target_version == "v3.0" and video_target and video_bytes:
         estimated_video_tasks = max(

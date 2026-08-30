@@ -167,14 +167,7 @@ def choose_heuristic(
             raise ValueError("Data workers exceed the planner's memory safety limit")
         workers = overrides.workers or min(cpu_limit, data_tasks, memory_cap, 8)
         workers = max(1, workers)
-        video_target = overrides.video_file_size_mb or _target_for_parallelism(
-            VIDEO_TARGETS_MB,
-            dataset.video_physical_bytes.total // max(1, dataset.cameras),
-            min(cpu_limit, 3 if network_io else 8),
-            200,
-            tasks_per_worker=3,
-            maximize_tasks_when_insufficient=True,
-        )
+        video_target = overrides.video_file_size_mb or 200
         video_tasks = (
             max(
                 dataset.cameras,
@@ -205,6 +198,23 @@ def choose_heuristic(
         reasons.append("network storage starts video calibration at three workers")
     else:
         video_workers = min(cpu_limit, max(1, video_tasks), 8)
+    if (
+        target_version == "v3.0"
+        and dataset.video_files
+        and overrides.video_file_size_mb is None
+    ):
+        video_target = 100
+        if network_io:
+            video_target = _target_for_balanced_groups(
+                VIDEO_TARGETS_MB,
+                dataset.video_physical_bytes.total,
+                video_workers,
+                200,
+            )
+        video_tasks = max(
+            dataset.cameras,
+            math.ceil(dataset.video_physical_bytes.total / (video_target * _MIB)),
+        )
 
     if overrides.workers is not None:
         reasons.append("data workers fixed by explicit override")
