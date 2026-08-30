@@ -128,7 +128,7 @@ when resources, storage, or dataset shape are not already characterized.
 | --- | --- |
 | `--auto` | Plan a static configuration, then execute it |
 | `--workers N` | Maximum concurrent Parquet groups |
-| `--video-workers N` | Maximum concurrent video remux jobs |
+| `--video-workers N` | Maximum concurrent video remux or frame-output jobs |
 | `--data-file-size-mb N` | Approximate uncompressed Parquet group target for v3 output |
 | `--video-file-size-mb N` | Approximate physical video group target for v3 output |
 | `--overwrite` | Replace an existing destination after staging succeeds |
@@ -376,6 +376,15 @@ decoding or re-encoding. Advanced Python callers may request compact lossy outpu
 with `VideoEncodingConfig(codec="mpeg4", pixel_format="yuv420p", ...)`; non-JPEG
 sources and non-MJPEG codecs use the decode/encode fallback, and the selected
 encoder must exist in the installed PyAV runtime.
+
+`video_workers` always counts concurrent media jobs, not a promise about the
+Python executor type. LeRobot `VideoSlice` jobs and ordinary frame plugins use
+threads around coarse native/PyAV work. `HDF5FrameSequence` declares process
+isolation because h5py has a process-wide HDF5 lock, so two or more HDF5 video
+workers run in a safe spawn pool. This is automatic; presets and CLI commands do
+not need a multiprocessing option. A custom `FrameSequence` should keep the
+default thread contract unless its instances are pickleable and its native
+reader specifically benefits from process isolation.
 
 ### Plan only
 

@@ -64,6 +64,28 @@ The current official main loader intentionally rejects every v2.1 dataset with
 its backward-compatibility error, so v2.1 was checked with letools deep
 validation and semantic comparison.
 
+## Full XVLA throughput
+
+The fixed XVLA Soft Fold workload contains 108 episodes, 125,412 trajectory
+frames, three JPEG cameras, 376,236 encoded media frames, and 20.739 GiB of HDF5
+input. Five alternating Full samples on one H800 node used a 96-CPU/128-GiB
+Slurm allocation but fixed execution at eight data and eight video workers.
+Replacing the eight media threads with eight safe spawned processes retained
+the same logical worker count while allowing independent h5py readers to run
+outside its process-wide HDF5 lock.
+
+| Target | Baseline wall | Isolated wall | Trajectory frames/s | Media frames/s | Speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| v2.1 | 20.41 s | 11.70 s | 10,719 | 32,157 | 1.74x |
+| v3.0 | 19.18 s | 7.15 s | 17,540 | 52,620 | 2.68x |
+
+Values are external CLI wall medians and include source construction, process
+startup, serialization, conversion, and publication. The candidate increased
+median CPU seconds from 61.33 to 85.36 for v2.1 and from 36.34 to 58.82 for
+v3.0, both proportionally below throughput. Slurm step MaxRSS stayed near the
+same 21.7 GiB accounting value. Deep validation, complete Arrow/statistics and
+324-video packet comparisons, and official v3 loader samples passed.
+
 ## Existing conversion regression
 
 The frozen dagger medium fixture has 300 episodes, 239,314 frames, and 900

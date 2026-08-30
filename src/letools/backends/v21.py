@@ -12,7 +12,8 @@ import pyarrow.parquet as pq
 
 from letools._arrow import normalize_feature_shapes
 from letools._io import write_json, write_jsonl
-from letools._video import apply_encoding_metadata, write_episode_media
+from letools._media_executor import EpisodeMediaJob, run_episode_media_jobs
+from letools._video import apply_encoding_metadata
 from letools.backends.base import DatasetBackend
 from letools.conversion_types import ConversionConfig
 from letools.model import Episode
@@ -115,7 +116,7 @@ class LeRobotV21Backend(DatasetBackend):
         )
 
         video_plan_started = time.perf_counter()
-        jobs = []
+        jobs: list[EpisodeMediaJob] = []
         for video_key in source.metadata.video_keys:
             groups: dict[str, list[tuple[Episode, Path]]] = defaultdict(list)
             for episode in source.episodes:
@@ -131,18 +132,16 @@ class LeRobotV21Backend(DatasetBackend):
                     (source.media_input(episode, video_key), target)
                     for episode, target in group
                 ]
-                jobs.append(inputs)
+                jobs.append(
+                    EpisodeMediaJob(
+                        outputs=tuple(inputs),
+                        fps=source.metadata.fps,
+                        encoding=config.video_encoding,
+                    )
+                )
         recorder.add("video_plan", time.perf_counter() - video_plan_started)
         video_started = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:
-            list(
-                pool.map(
-                    lambda job: write_episode_media(
-                        job, source.metadata.fps, config.video_encoding
-                    ),
-                    jobs,
-                )
-            )
+        run_episode_media_jobs(jobs, config.video_workers)
         recorder.add(
             "video_execute", time.perf_counter() - video_started, tasks=len(jobs)
         )

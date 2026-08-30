@@ -14,8 +14,13 @@ import pyarrow.parquet as pq
 
 from letools._arrow import canonical_data_schema, cast_data_table, normalize_feature_shapes
 from letools._io import write_json
+from letools._media_executor import (
+    GroupMediaJob,
+    jobs_require_process_isolation,
+    run_group_media_jobs,
+)
 from letools._stats import aggregate_episode_stats, flatten_stats
-from letools._video import apply_encoding_metadata, media_duration, write_media_group
+from letools._video import apply_encoding_metadata, media_duration
 from letools.backends.base import DatasetBackend
 from letools.conversion_types import ConversionConfig
 from letools.model import Episode
@@ -142,6 +147,7 @@ class LeRobotV30Backend(DatasetBackend):
         video_plan_elapsed = 0.0
         video_execute_elapsed = 0.0
         video_tasks = 0
+        camera_jobs: list[list[GroupMediaJob]] = []
         for video_key in source.metadata.video_keys:
             video_plan_started = time.perf_counter()
             episodes = list(source.episodes)
@@ -150,7 +156,7 @@ class LeRobotV30Backend(DatasetBackend):
                 for episode in episodes
             ]
             video_groups = _groups_by_size(episodes, sizes, config.video_file_size_mb)
-            jobs = []
+            jobs: list[GroupMediaJob] = []
             for file_number, group in enumerate(video_groups):
                 chunk_index, file_index = divmod(file_number, config.chunks_size)
                 elapsed = 0.0
@@ -170,23 +176,30 @@ class LeRobotV30Backend(DatasetBackend):
                     video_key=video_key, chunk_index=chunk_index, file_index=file_index
                 )
                 inputs = [source.media_input(episode, video_key) for episode in group]
-                jobs.append((inputs, output))
-            video_plan_elapsed += time.perf_counter() - video_plan_started
-            video_started = time.perf_counter()
-            with ThreadPoolExecutor(max_workers=min(config.video_workers, len(jobs) or 1)) as pool:
-                list(
-                    pool.map(
-                        lambda job: write_media_group(
-                            *job,
-                            source.metadata.fps,
-                            config.video_encoding,
-                            local_staging=False,
-                        ),
-                        jobs,
+                jobs.append(
+                    GroupMediaJob(
+                        inputs=tuple(inputs),
+                        output=output,
+                        fps=source.metadata.fps,
+                        encoding=config.video_encoding,
+                        local_staging=False,
                     )
                 )
-            video_execute_elapsed += time.perf_counter() - video_started
+            video_plan_elapsed += time.perf_counter() - video_plan_started
+            camera_jobs.append(jobs)
             video_tasks += len(jobs)
+
+        video_started = time.perf_counter()
+        all_video_jobs = [job for jobs in camera_jobs for job in jobs]
+        if jobs_require_process_isolation(all_video_jobs):
+            # Pay spawn startup once and allow independent camera/HDF5 resources
+            # to share the process pool. Encoded VideoSlice workloads preserve
+            # the prior one-camera-at-a-time I/O topology below.
+            run_group_media_jobs(all_video_jobs, config.video_workers)
+        else:
+            for jobs in camera_jobs:
+                run_group_media_jobs(jobs, config.video_workers)
+        video_execute_elapsed += time.perf_counter() - video_started
         recorder.add("video_plan", video_plan_elapsed)
         recorder.add("video_execute", video_execute_elapsed, tasks=video_tasks)
 

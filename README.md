@@ -104,7 +104,10 @@ letools convert /data/hdf5 /data/dataset-v30 \
 JPEG-valued HDF5 cameras are preserved as MJPEG packets by default. This avoids
 lossy transcoding and is substantially faster, but the generated videos remain
 close to the source JPEG size. Python callers can select compact MPEG-4 output
-through `VideoEncodingConfig`; see [detailed usage](docs/USAGE.md#8-python-api).
+through `VideoEncodingConfig`. HDF5 media jobs automatically use spawn-based
+process isolation to bypass h5py's process-wide native lock; `--video-workers`
+still controls the job count and no multiprocessing setup is required. See
+[detailed usage](docs/USAGE.md#8-python-api).
 
 | Option | Meaning |
 | --- | --- |

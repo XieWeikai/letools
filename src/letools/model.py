@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, Literal
 
 import pyarrow as pa
 
@@ -68,6 +68,10 @@ class FrameSequence(ABC):
     height: int
     encoded_format: str
     estimated_size_bytes: int
+    # Most frame sources can share a thread pool. Sources backed by native
+    # libraries with process-wide locks may opt into spawn-based isolation,
+    # which also promises that their sequence objects are pickleable.
+    worker_isolation: ClassVar[Literal["thread", "process"]] = "thread"
 
     @abstractmethod
     def read_batch(self, start: int, stop: int) -> tuple[FrameBuffer, ...]:

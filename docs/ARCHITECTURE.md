@@ -118,7 +118,10 @@ worker count. Batch elements implement the Python buffer protocol: HDF5 yields
 memoryviews that retain the vlen NumPy allocations through packet consumption,
 avoiding an intermediate full-payload `bytes` copy. Encoded packets, decoded
 frames, HDF5 handles, and FFmpeg contexts remain inside the primitive that owns
-the whole operation.
+the whole operation. `FrameSequence.worker_isolation` is a source capability,
+not a worker-count policy. Its default is `thread`; a pickleable source backed
+by a native process-wide lock may opt into `process`. The HDF5 sequence does so
+because h5py serializes HDF5 C API calls inside one process.
 
 ## 4. Module ownership and boundaries
 
@@ -137,6 +140,7 @@ the whole operation.
 | `backends/v21.py` | v2.1 paths, metadata, per-episode Parquet/video output | v3 layout parsing |
 | `backends/v30.py` | v3 grouping, offsets, metadata, aggregate stats | v2 layout parsing |
 | `_arrow.py` | Canonical schemas, casts, safe feature-shape normalization | Dataset traversal policy |
+| `_media_executor.py` | Pickleable media jobs and thread/spawn executor selection | Source parsing, target grouping, or worker-count planning |
 | `_video.py` | Media dispatch, packet remux, frame decode/encode, and native fallback | Source parsing or episode metadata policy |
 | `_stats.py` | Vectorized dataset-stat aggregation and flattening | Physical metadata layout |
 | `_io.py` | Small JSON/JSONL write primitives | Conversion orchestration |
@@ -288,6 +292,7 @@ explicit JSON preset or Python mapping
     -> numeric datasets become fixed-shape Arrow columns
     -> canonical timestamp/index/task columns are generated
     -> variable-length JPEG values become HDF5FrameSequence batches
+    -> backend media jobs use spawned workers to overlap independent HDF5 reads
     -> v2.1 backend: one Parquet/video file per episode
        or v3 backend: size-grouped Parquet/video shards
     -> JPEG payloads are timestamped and muxed directly into MJPEG MP4 streams
@@ -361,6 +366,15 @@ encoder per shard. `video_workers` limits concurrent output jobs, while
 When encoding occurs, the backend records the selected codec, pixel format, FPS,
 and lack of audio in the target video feature metadata. Remux-only conversions
 preserve the source codec metadata unchanged.
+
+The backend owns media-job construction and `_media_executor.py` owns executor
+selection. Thread-safe `FrameSequence` and every `VideoSlice` workload retain
+the thread/native path. A homogeneous set of process-isolated sequences uses a
+`spawn` pool with the same `video_workers` bound. Spawn startup is paid once per
+media phase; it cannot inherit an HDF5 handle, Arrow thread state, or FFmpeg
+context from the coordinator. V3 process-isolated jobs from all cameras share
+that pool, whereas the LeRobot `VideoSlice` path preserves its measured
+one-camera-at-a-time I/O topology.
 
 FrameSequence output placement follows target granularity. V2.1 first muxes its
 many small episode files on node-local storage, then copies them into the hidden

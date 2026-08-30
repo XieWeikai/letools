@@ -110,6 +110,11 @@ class HDF5Mapping:
 class HDF5FrameSequence(FrameSequence):
     """Batch reader for variable-length encoded image values in one HDF5 file."""
 
+    # h5py protects all HDF5 C API calls with one process-wide lock. Separate
+    # spawned workers let independent episode files read concurrently without
+    # inheriting an HDF5 handle from the conversion coordinator.
+    worker_isolation = "process"
+
     path: Path
     dataset_key: str
     frame_count: int

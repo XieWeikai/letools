@@ -6,7 +6,7 @@ Eleven accepted optimizations are present on `/workspace/shrelic/letools/main`.
 All conversions and full comparisons ran as single-node Slurm jobs within the
 protocol resource ceiling.
 
-Five additional HDF5-source optimizations are accepted on
+Six additional HDF5-source optimizations are accepted on
 `feat/hdf5-source-mvp`; that feature campaign is intentionally not merged to
 `main` yet.
 
@@ -40,12 +40,15 @@ frames, three JPEG cameras, 376236 encoded frames, and 20.7 GiB of HDF5 input.
 | `1c59ca7` | Packet-mux JPEG values without transcoding | 2.70x | 3.07x |
 | `2f37e36` | Pass HDF5 buffers without a bytes copy | +16.6% | +11.7% |
 | `720b66e` | Balance frame batches at 48 | +5.3% | +4.2% |
-| feature tip | Write grouped v3 shards directly to staging | no regression | +5.6% |
+| `6716c7e` | Write grouped v3 shards directly to staging | no regression | +5.6% |
+| feature tip | Isolate h5py media workers with safe spawn processes | 1.74x | 2.68x |
 
-At the final fixed eight-worker setting, v2.1 converts in a 19.83 second
-seven-sample regression median (5.446 episodes/s, 6324.4 frames/s). The final
-v3 target median is 19.49 seconds (5.541 episodes/s, 6434.7 frames/s). These are measured
-end-to-end CLI wall times and are not products of per-commit speedup ratios.
+At the final fixed eight-worker setting, v2.1 converts in an 11.70 second
+five-sample external-wall median (9.231 episodes/s, 10719 trajectory frames/s,
+and 32157 media frames/s). The final v3 target median is 7.15 seconds (15.105
+episodes/s, 17540 trajectory frames/s, and 52620 media frames/s). These are
+measured end-to-end CLI wall times and are not products of per-commit speedup
+ratios.
 
 Eight later HDF5 candidates were rejected: PyAV batch mux, batch 64 from the
 older baseline, packet-mux planner 6/64, direct staging for both layouts,
