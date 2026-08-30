@@ -9,6 +9,13 @@ The public API consistently uses LeRobot's `episode` terminology. Python owns
 the plugin API and conversion plan; native Rust primitives accelerate work that
 benefits from lower per-item overhead.
 
+Detailed documentation:
+
+- [Usage guide](docs/USAGE.md)
+- [Architecture and module boundaries](docs/ARCHITECTURE.md)
+- [Static planner design](docs/PLANNER.md)
+- [Documentation index](docs/README.md)
+
 ## Quick start
 
 Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) are required.
