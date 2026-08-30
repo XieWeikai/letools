@@ -59,6 +59,26 @@ def cast_data_table(table: pa.Table, schema: pa.Schema) -> pa.Table:
     return table.cast(schema)
 
 
+def numpy_to_arrow(values: Any) -> pa.Array:
+    """Convert a dense NumPy array without materializing nested Python lists.
+
+    The first dimension is the Arrow row dimension. Remaining dimensions become
+    nested fixed-size lists, preserving tensor shape in Parquet efficiently.
+    """
+
+    import numpy as np
+
+    array = np.asarray(values)
+    if array.ndim == 0:
+        raise ValueError("An episode feature must have a frame dimension")
+    if array.ndim == 1:
+        return pa.array(array)
+    result: pa.Array = pa.array(array.reshape(-1))
+    for size in reversed(array.shape[1:]):
+        result = pa.FixedSizeListArray.from_arrays(result, size)
+    return result
+
+
 def _nested_value_shape(value: Any) -> tuple[int, ...]:
     if not isinstance(value, (list, tuple)):
         return ()

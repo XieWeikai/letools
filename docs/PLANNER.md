@@ -10,7 +10,7 @@ destination storage pair.
 It owns four choices:
 
 - concurrent Parquet groups (`workers`);
-- concurrent video remux jobs (`video_workers`);
+- concurrent video remux or frame-encoding output jobs (`video_workers`);
 - v3 Parquet target size (`data_file_size_mb`);
 - v3 video target size (`video_file_size_mb`).
 
@@ -98,14 +98,17 @@ resources; it never submits or resizes a job.
 
 ### 4.2 Dataset profile
 
-The dataset inspector reads metadata, physical file sizes, and Parquet footers.
-It does not decode frames or video during the profiling phase. It records:
+The dataset inspector asks the source plugin for format-neutral profiles. A
+LeRobot source reads Parquet footers and physical file sizes; `HDF5Source` scans
+mapped schema and numeric statistics but does not decode camera pixels. It
+records:
 
+- source plugin and semantic-configuration identities;
 - version, episodes, frames, and camera count;
-- data and video file counts;
-- uncompressed Parquet size distribution;
-- physical Parquet and video size distributions;
-- episodes-per-data-file distribution.
+- data-resource and media-input counts;
+- logical and physical data-size distributions;
+- media input-size distribution and encoding-input count;
+- episodes-per-data-resource distribution.
 
 These values determine available task parallelism, grouping targets, memory
 estimates, and cache identity.
@@ -174,9 +177,11 @@ same CPU, task, and memory bounds apply.
 
 ### 5.3 Video choices
 
-Without an override, the heuristic starts video calibration at up to three
+Without an override, the heuristic starts remux calibration at up to three
 workers when either endpoint is network storage and up to eight workers for
-non-network storage. It is always clipped by CPUs and available work.
+non-network storage. Frame-sequence encoding is CPU-bearing and starts at up to
+eight output jobs even on network storage. Both paths are clipped by effective
+CPUs and available work.
 
 For v3 output, local storage starts with 100 MiB video groups. Network storage
 selects from the video target candidates to balance group loads at the chosen
@@ -275,6 +280,8 @@ The SHA-256 fingerprint contains:
 - CPU model;
 - explicit overrides;
 - the complete dataset profile;
+- source plugin identity and a stable source-configuration identity, including
+  the complete HDF5 mapping digest;
 - source and destination mount point, filesystem, storage class, and device.
 
 Hostname and free-space values are reported but are not fingerprint inputs.

@@ -189,10 +189,14 @@ def choose_heuristic(
         workers = overrides.workers or min(cpu_limit, data_tasks, memory_cap, 8)
         workers = max(1, workers)
 
+    encoding_media = dataset.encoding_media_inputs > 0
     if overrides.video_workers is not None:
         video_workers = max(1, overrides.video_workers)
     elif not dataset.video_files:
         video_workers = 1
+    elif encoding_media:
+        video_workers = min(cpu_limit, max(1, video_tasks), 8)
+        reasons.append("frame-sequence encoding starts at one output job per available core")
     elif network_io:
         video_workers = min(cpu_limit, max(1, video_tasks), 3)
         reasons.append("network storage starts video calibration at three workers")

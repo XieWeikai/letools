@@ -44,12 +44,15 @@ class StorageProfile:
 class DatasetProfile:
     """Format-neutral workload shape consumed by planner policy."""
 
+    source_kind: str
+    source_configuration: str
     version: str
     episodes: int
     frames: int
     cameras: int
     data_files: int
     video_files: int
+    encoding_media_inputs: int
     data_logical_bytes: Distribution
     data_physical_bytes: Distribution
     media_input_bytes: Distribution

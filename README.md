@@ -3,7 +3,7 @@
 `letools` is a Python and Rust toolkit for creating, converting, and validating
 [LeRobot](https://github.com/huggingface/lerobot) datasets. The current release
 supports lossless semantic conversion in both directions between LeRobot v2.1
-and v3.0.
+and v3.0, plus explicit mapping-driven HDF5 export to either LeRobot version.
 
 The public API consistently uses LeRobot's `episode` terminology. Python owns
 the plugin API and conversion plan; native Rust primitives accelerate work that
@@ -159,6 +159,7 @@ The current built-in plugins are:
 
 - `LeRobotV21Source`
 - `LeRobotV30Source`
+- `HDF5Source` (Python API with an explicit `HDF5Mapping`)
 
 The current built-in backends write:
 

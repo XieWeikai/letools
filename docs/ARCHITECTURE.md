@@ -11,6 +11,7 @@ native objects across the language boundary.
 The implemented product boundary is intentionally narrow:
 
 - read LeRobot v2.1 and v3.0 datasets;
+- read one-file-per-episode HDF5 datasets through an explicit mapping;
 - write LeRobot v2.1 and v3.0 datasets;
 - accept a custom `DatasetSource` through the Python API;
 - validate one dataset and compare two datasets semantically;
@@ -43,7 +44,7 @@ plugins or third-party backends by entry point.
                 +-------------------------------+
                 | format-neutral episode model |
                 | DatasetMetadata / Episode /   |
-                | VideoSlice / Arrow Table      |
+                | MediaInput / Arrow Table      |
                 +---------------+---------------+
                                 ^
                   reads         |         consumes
@@ -53,6 +54,7 @@ plugins or third-party backends by entry point.
    DatasetSource plugins                        output backends
    - LeRobotV21Source                          - LeRobotV21Backend
    - LeRobotV30Source                          - LeRobotV30Backend
+   - HDF5Source                                - LeRobotV21Backend
    - custom Python source                      - LeRobotV30Backend
            |                                         |
            +--------------------+--------------------+
@@ -119,6 +121,7 @@ primitive that owns the whole operation.
 | `model.py` | Version-neutral dataset and episode contracts | Filesystem parsing or output layout |
 | `plugins/base.py` | `DatasetSource` read protocol | Target writing |
 | `plugins/lerobot.py` | v2.1/v3.0 metadata parsing and logical slicing | Target writing and concurrency policy |
+| `plugins/hdf5.py` | Explicit HDF5 mapping, schema scan, Arrow reads, and frame batches | Target layout or robot-specific presets |
 | `backends/base.py` | Backend write protocol | Source-format parsing |
 | `backends/v21.py` | v2.1 paths, metadata, per-episode Parquet/video output | v3 layout parsing |
 | `backends/v30.py` | v3 grouping, offsets, metadata, aggregate stats | v2 layout parsing |
@@ -166,8 +169,9 @@ container internals. The default implementations adapt path-based Parquet and
 MP4 sources and cache resource inspection. Other formats override them.
 
 `open_dataset()` reads `meta/info.json` and dispatches only `v2.1` and `v3.0`.
-A custom source is passed as an object to `convert()` or `plan_conversion()`;
-there is currently no CLI registration mechanism.
+`HDF5Source` and custom sources are passed as objects to `convert()` or
+`plan_conversion()`; there is currently no CLI registration or mapping-file
+mechanism.
 
 Source implementations must provide stable episode order, contiguous indices
 starting at zero, accurate lengths and totals, consistent Arrow schemas, and a
@@ -263,7 +267,33 @@ Grouping by shared input avoids reopening a v3 shard once for every contained
 episode. v2.1 path fan-out is controlled by `chunks_size`; v3 target-size
 parameters are absent for this direction.
 
-## 10. Planner interaction
+## 10. HDF5 to LeRobot pipeline
+
+```text
+explicit HDF5Mapping + one HDF5 file per episode
+    -> metadata/schema scan and frame-count validation
+    -> numeric datasets become fixed-shape Arrow columns
+    -> canonical timestamp/index/task columns are generated
+    -> variable-length JPEG values become HDF5FrameSequence batches
+    -> v2.1 backend: one Parquet/video file per episode
+       or v3 backend: size-grouped Parquet/video shards
+    -> PyAV decodes JPEG batches and encodes target MP4 streams
+    -> target metadata records actual encoding settings
+```
+
+The source never guesses robot semantics. Numeric and video keys, target names,
+FPS, dimensions, task source/default, and robot type come from `HDF5Mapping`.
+The MVP assumes each matched file is exactly one episode and all mapped arrays
+share their first dimension. It computes numeric statistics during the metadata
+scan but does not decode camera pixels for image statistics.
+
+Canonical `timestamp`, `frame_index`, `episode_index`, global `index`, and
+`task_index` columns are generated. Timestamp is `frame_index / fps`; a source
+timestamp can be preserved under another explicitly mapped target key. This is
+a mechanical base policy, not an XVLA preset or a decision about joint names,
+field selection, or final task metadata.
+
+## 11. Planner interaction
 
 The planner is optional and sits before the coordinator:
 
@@ -282,7 +312,7 @@ the same planner and then calls `convert()`. A cache hit skips bounded
 calibration, not source/dataset/storage inspection. See [PLANNER.md](PLANNER.md)
 for exact rules and limitations.
 
-## 11. Native acceleration boundary
+## 12. Native acceleration boundary
 
 `_native.py` performs capability-based dispatch. Filesystem operations have a
 portable Python implementation. Video concat, split, and packet digests use
@@ -311,7 +341,7 @@ When encoding occurs, the backend records the selected codec, pixel format, FPS,
 and lack of audio in the target video feature metadata. Remux-only conversions
 preserve the source codec metadata unchanged.
 
-## 12. Validation boundary
+## 13. Validation boundary
 
 Conversion's built-in gate is shallow validation: metadata totals, contiguous
 episode indices, referenced files, Parquet row counts, and basic schema-shape
@@ -324,7 +354,7 @@ comparison hashes encoded packet payloads per episode and camera. It does not
 require byte-identical Parquet files or MP4 containers because both formats
 permit semantically equivalent physical layouts.
 
-## 13. Extension rules
+## 14. Extension rules
 
 When adding a source format, prefer a new `DatasetSource` that maps it into the
 existing model. Do not teach both LeRobot backends how to parse that format.

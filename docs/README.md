@@ -4,7 +4,7 @@ This directory separates user-facing operation from implementation design and
 performance evidence:
 
 - [Usage guide](USAGE.md): installation, every CLI command, Python APIs,
-  validation, custom sources, Slurm operation, and troubleshooting.
+  validation, HDF5 mappings, custom sources, Slurm operation, and troubleshooting.
 - [Architecture](ARCHITECTURE.md): module ownership, boundaries, data model,
   conversion pipelines, native acceleration, and extension points.
 - [Static planner](PLANNER.md): planner scope, resource and I/O inputs,

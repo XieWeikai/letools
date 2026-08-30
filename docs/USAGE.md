@@ -427,7 +427,91 @@ if not comparison.equal:
     raise RuntimeError(comparison.errors)
 ```
 
-## 9. Custom source plugins
+## 9. Convert HDF5 with an explicit mapping
+
+HDF5 has no universal robotics schema. The built-in source therefore requires a
+mapping object and is currently a Python API, not an auto-detected CLI source.
+Each file matched by `episode_glob` is one episode. Every mapped numeric or video
+dataset must have the same positive first dimension in that file.
+
+```python
+from letools import (
+    ConversionConfig,
+    HDF5Mapping,
+    HDF5NumericField,
+    HDF5Source,
+    HDF5VideoField,
+    convert,
+)
+
+mapping = HDF5Mapping(
+    fps=30,
+    numeric_fields=(
+        HDF5NumericField("observations/qpos", "observation.state"),
+        HDF5NumericField("action", "action"),
+        # Preserve a source clock without replacing canonical LeRobot time.
+        HDF5NumericField("time_stamp", "source.timestamp"),
+    ),
+    video_fields=(
+        HDF5VideoField(
+            "observations/images/cam_high",
+            "observation.images.front",
+            width=640,
+            height=480,
+        ),
+        HDF5VideoField(
+            "observations/images/cam_left_wrist",
+            "observation.images.left",
+            width=640,
+            height=480,
+        ),
+        HDF5VideoField(
+            "observations/images/cam_right_wrist",
+            "observation.images.right",
+            width=640,
+            height=480,
+        ),
+    ),
+    task_key="language_instruction",
+    robot_type="my-robot",
+    episode_glob="episode_*.hdf5",
+)
+
+source = HDF5Source("/data/hdf5", mapping)
+convert(
+    source,
+    "/data/lerobot-v30",
+    "v3.0",
+    config=ConversionConfig(workers=8, video_workers=8),
+)
+# The same source object can instead target v2.1.
+convert(source, "/data/lerobot-v21", "v2.1")
+```
+
+`dtype` on `HDF5NumericField` optionally casts a field before Arrow/Parquet
+writing. `names` optionally supplies flattened component names and must match
+the mapped feature shape. Set exactly one of `task_key` and `default_task`.
+Duplicate target keys and attempts to map generated LeRobot keys are rejected.
+Files are naturally sorted, so `episode_2.hdf5` precedes `episode_10.hdf5`.
+
+The source generates canonical `timestamp = frame_index / fps`, `frame_index`,
+`episode_index`, global `index`, and `task_index`. Map a raw source timestamp to
+another target key when it must be retained. Numeric statistics are computed;
+camera pixels are not decoded merely to create image statistics. JPEG-like
+variable-length values are read in batches and encoded according to
+`VideoEncodingConfig`.
+
+This MVP does not include an XVLA/Soft-Fold preset and does not decide which of
+`qpos`, `qvel`, `eef`, effort, base action, or source-clock fields belong in the
+final dataset. It also does not infer joint names. Those are dataset semantics
+and must remain explicit until a preset and metadata policy are agreed.
+
+The static planner accepts an `HDF5Source` object. Its cache fingerprint includes
+the source class and a SHA-256 of the complete mapping, so two semantic mappings
+cannot share a calibrated plan. `letools plan` cannot construct this object from
+CLI arguments yet.
+
+## 10. Custom source plugins
 
 A custom input format can reuse both built-in output backends by implementing
 `DatasetSource`. No file registration is required when using the Python API:
@@ -499,7 +583,7 @@ profile methods and does not assume that source data is stored as Parquet.
 Standalone validation, the CLI, and `open_dataset()` auto-detection currently
 support only physical LeRobot v2.1 and v3.0 directories.
 
-## 10. Development setup
+## 11. Development setup
 
 Install test and native development groups:
 
@@ -533,7 +617,7 @@ uv run maturin develop \
 Normal users should not set these variables. Release wheels carry their own
 runtime dependencies and relative rpaths.
 
-## 11. Common failures
+## 12. Common failures
 
 ### Source and target versions match
 

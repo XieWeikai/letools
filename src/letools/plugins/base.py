@@ -29,6 +29,12 @@ class DatasetSource(ABC):
     metadata: DatasetMetadata
     episodes: tuple[Episode, ...]
 
+    def planner_identity(self) -> tuple[str, str]:
+        """Return stable plugin and configuration identities for plan caching."""
+
+        kind = f"{type(self).__module__}.{type(self).__qualname__}"
+        return kind, ""
+
     def iter_episodes(self) -> Iterator[Episode]:
         """Iterate episodes in stable dataset order."""
 

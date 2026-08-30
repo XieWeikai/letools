@@ -17,6 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "av>=15,<17",
+    "h5py>=3.12,<4",
     "letools-native==0.1.0",
     "numpy>=2",
     "pyarrow>=18",

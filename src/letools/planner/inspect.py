@@ -219,6 +219,7 @@ def _distribution(values: list[int]) -> Distribution:
 
 
 def inspect_dataset(source: DatasetSource) -> DatasetProfile:
+    source_kind, source_configuration = source.planner_identity()
     data_resources = {}
     media_resources = {}
     episodes_per_resource: Counter[str] = Counter()
@@ -232,12 +233,17 @@ def inspect_dataset(source: DatasetSource) -> DatasetProfile:
     data_profiles = tuple(data_resources.values())
     media_profiles = tuple(media_resources.values())
     return DatasetProfile(
+        source_kind=source_kind,
+        source_configuration=source_configuration,
         version=source.metadata.version,
         episodes=source.metadata.total_episodes,
         frames=source.metadata.total_frames,
         cameras=len(source.metadata.video_keys),
         data_files=len(data_profiles),
         video_files=len(media_profiles),
+        encoding_media_inputs=sum(
+            profile.requires_encoding for profile in media_profiles
+        ),
         data_logical_bytes=_distribution(
             [profile.resource_logical_bytes for profile in data_profiles]
         ),

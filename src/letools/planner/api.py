@@ -21,7 +21,7 @@ from letools.planner.types import (
 from letools.plugins import DatasetSource, open_dataset
 
 
-_PLANNER_ALGORITHM_VERSION = 6
+_PLANNER_ALGORITHM_VERSION = 7
 
 
 def _normalize_version(version: str) -> str:
