@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,36 @@ _GENERATED_FEATURES = {
     "index": ("int64", np.int64),
     "task_index": ("int64", np.int64),
 }
+
+_STREAMING_METADATA_CACHE_INITIAL_BYTES = 1024**2
+_STREAMING_METADATA_CACHE_MAX_BYTES = 2 * 1024**2
+
+
+def _open_streaming_file(path: Path) -> h5py.File:
+    """Open one sequential reader with a bounded HDF5 metadata cache.
+
+    HDF5's default per-file metadata cache may grow to 32 MiB. A video worker
+    keeps this handle open for an episode, but only walks one contiguous vlen
+    index, so a much smaller cache avoids multiplying idle metadata by the
+    worker count.
+    """
+
+    access = h5py.h5p.create(h5py.h5p.FILE_ACCESS)
+    cache = access.get_mdc_config()
+    cache.set_initial_size = 1
+    cache.initial_size = _STREAMING_METADATA_CACHE_INITIAL_BYTES
+    cache.min_size = _STREAMING_METADATA_CACHE_INITIAL_BYTES
+    cache.max_size = _STREAMING_METADATA_CACHE_MAX_BYTES
+    access.set_mdc_config(cache)
+    try:
+        identifier = h5py.h5f.open(
+            os.fsencode(path),
+            flags=h5py.h5f.ACC_RDONLY,
+            fapl=access,
+        )
+    finally:
+        access.close()
+    return h5py.File(identifier)
 
 
 @dataclass(frozen=True)
@@ -98,6 +130,25 @@ class HDF5FrameSequence(FrameSequence):
             value.tobytes() if isinstance(value, np.ndarray) else bytes(value)
             for value in values
         )
+
+    def iter_batches(self, batch_frames: int) -> Iterator[tuple[bytes, ...]]:
+        """Yield every batch while holding one read-only HDF5 file handle."""
+
+        if batch_frames <= 0:
+            raise ValueError("Frame batch size must be positive")
+        with _open_streaming_file(self.path) as handle:
+            dataset = handle[self.dataset_key]
+            for start in range(0, self.frame_count, batch_frames):
+                stop = min(self.frame_count, start + batch_frames)
+                values = dataset[start:stop]
+                batch = tuple(
+                    value.tobytes() if isinstance(value, np.ndarray) else bytes(value)
+                    for value in values
+                )
+                # A suspended generator retains its locals. Drop the HDF5 slice
+                # before yielding so each worker holds only one JPEG batch.
+                del values
+                yield batch
 
 
 def _natural_key(path: Path) -> tuple[Any, ...]:

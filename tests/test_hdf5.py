@@ -5,6 +5,7 @@ from pathlib import Path
 import av
 import h5py
 import numpy as np
+import letools.plugins.hdf5 as hdf5_plugin
 
 from letools import (
     ConversionConfig,
@@ -123,3 +124,22 @@ def test_hdf5_mapping_rejects_implicit_or_ambiguous_semantics(tmp_path: Path) ->
         assert "exactly one" in str(error)
     else:
         raise AssertionError("Ambiguous task mapping should be rejected")
+
+
+def test_hdf5_frame_sequence_reuses_one_file_handle(tmp_path: Path, monkeypatch) -> None:
+    root, mapping = make_hdf5(tmp_path / "hdf5")
+    source = HDF5Source(root, mapping)
+    sequence = source.media_input(source.episodes[0], "observation.images.front")
+    original_file = h5py.File
+    open_count = 0
+
+    def counting_file(*args, **kwargs):
+        nonlocal open_count
+        open_count += 1
+        return original_file(*args, **kwargs)
+
+    monkeypatch.setattr(hdf5_plugin.h5py, "File", counting_file)
+    batches = list(sequence.iter_batches(2))
+
+    assert [len(batch) for batch in batches] == [2, 2]
+    assert open_count == 1

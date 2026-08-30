@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,19 @@ class FrameSequence(ABC):
         """Return encoded frames in the half-open interval [start, stop)."""
 
         raise NotImplementedError
+
+    def iter_batches(self, batch_frames: int) -> Iterator[tuple[bytes, ...]]:
+        """Yield bounded frame batches while preserving source-specific locality.
+
+        The default implementation delegates to the random-access contract.
+        Sources with an expensive open operation may override this method and
+        retain their resource for the lifetime of the iterator.
+        """
+
+        if batch_frames <= 0:
+            raise ValueError("Frame batch size must be positive")
+        for start in range(0, self.frame_count, batch_frames):
+            yield self.read_batch(start, min(self.frame_count, start + batch_frames))
 
 
 MediaInput = VideoSlice | FrameSequence

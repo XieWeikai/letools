@@ -108,10 +108,14 @@ logic.
 `DatasetSource.read_episode()` returns a `pyarrow.Table` containing exactly the
 episode's rows. Arrow is the in-process point-batch representation; individual
 Python row objects are deliberately avoided. `VideoSlice` carries only a path
-and start/end seconds. `FrameSequence` exposes encoded image bytes in batches,
-which lets HDF5 and image-backed sources avoid one plugin callback per frame.
-Encoded packets, decoded frames, and FFmpeg contexts remain inside the media
-primitive that owns the whole operation.
+and start/end seconds. `FrameSequence` exposes encoded image bytes through both
+random-access batches and a sequential `iter_batches()` contract. The default
+iterator delegates to random access, while a source may override it to retain
+an expensive resource for one sequence. The HDF5 plugin uses that hook to open
+an episode file once per camera encoding job and bounds the long-lived HDF5
+metadata cache to avoid multiplying the library's default cache by the video
+worker count. Encoded packets, decoded frames, HDF5 handles, and FFmpeg contexts
+remain inside the primitive that owns the whole operation.
 
 ## 4. Module ownership and boundaries
 

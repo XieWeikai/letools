@@ -13,11 +13,14 @@ most half of that node's logical CPUs and half of its physical memory.
 ## 2. Non-Negotiable Rules
 
 1. Correctness is a hard gate and is evaluated before performance.
-2. Every iteration starts from the current clean letools/main.
+2. Every iteration starts from the current clean acceptance branch. This is
+   `main` by default; a campaign may name a feature branch before its first
+   iteration when the optimized feature has intentionally not reached main.
 3. A draft is archived before implementation.
 4. Baseline and candidate use the same dataset, node class, resource request,
    dependency lock, cache classification, and explicit worker settings.
-5. Only accepted candidates are committed and fast-forwarded into main.
+5. Only accepted candidates are committed and fast-forwarded into the named
+   acceptance branch.
 6. Rejected candidates are archived with their diff and report, then their
    disposable branch/worktree is removed.
 7. Raw records, drafts, reports, and profiles stay under this ignored directory
@@ -160,7 +163,7 @@ payloads and dataset semantics may not.
 
 ## 8. Acceptance Policy
 
-For candidate versus current-main baseline:
+For candidate versus the current accepted-tip baseline:
 
     T = candidate primary throughput / baseline primary throughput
     M = candidate process-tree peak RSS / baseline peak RSS
@@ -188,14 +191,15 @@ and does not leak into the episode/plugin API.
 
 ## 9. Iteration Lifecycle
 
-1. Verify clean letools/main.
-2. Run or refresh the current-main baseline.
-3. When targeting the high-resource lane, refresh the current-main resource
+1. Verify the named letools acceptance branch is clean.
+2. Run or refresh the current accepted-tip baseline.
+3. When targeting the high-resource lane, refresh the accepted-tip resource
    scaling curve and choose the best measured baseline point.
 4. Inspect stage metrics and profiles; choose the largest actionable bottleneck.
 5. Archive draft.md with evidence, hypothesis, proposed change, expected
    benefit, risks, correctness impact, and rollback.
-6. Create opt/NNNN-short-name from main in a disposable branch or worktree.
+6. Create opt/NNNN-short-name from the acceptance branch in a disposable
+   branch or worktree.
 7. Implement the smallest candidate and run unit and Micro tests.
 8. Run Medium profiling; reject early if the hypothesis fails.
 9. Run Full bidirectional conversions and the complete correctness gate.
@@ -204,10 +208,10 @@ and does not leak into the episode/plugin API.
 11. Run the low-resource regression check for high-resource candidates.
 12. Archive raw results, candidate.diff, and report.md.
 13. If accepted, write the commit message according to the standard below,
-    commit, and fast-forward merge into main.
+    commit, and fast-forward merge into the acceptance branch.
 14. If rejected, preserve the diff, remove its branch/worktree, and return to
-    clean main.
-15. The accepted main becomes the next iteration's baseline.
+    the clean acceptance branch.
+15. The accepted branch tip becomes the next iteration's baseline.
 
 ### 9.1 Accepted Commit Message Standard
 

@@ -228,13 +228,11 @@ def _encode_frame_sequences(
         frame_index = 0
         for sequence in inputs:
             produced = 0
-            for start in range(0, sequence.frame_count, encoding.batch_frames):
-                stop = min(sequence.frame_count, start + encoding.batch_frames)
-                batch = sequence.read_batch(start, stop)
-                if len(batch) != stop - start:
+            for batch in sequence.iter_batches(encoding.batch_frames):
+                expected = min(encoding.batch_frames, sequence.frame_count - produced)
+                if len(batch) != expected:
                     raise ValueError(
-                        f"Frame source returned {len(batch)} frames for requested range "
-                        f"[{start}, {stop})"
+                        f"Frame source returned {len(batch)} frames for a batch of {expected}"
                     )
                 for encoded in batch:
                     decoded = decoder.decode(av.Packet(encoded))
