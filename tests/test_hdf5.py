@@ -144,4 +144,6 @@ def test_hdf5_frame_sequence_reuses_one_file_handle(tmp_path: Path, monkeypatch)
     batches = list(sequence.iter_batches(2))
 
     assert [len(batch) for batch in batches] == [2, 2]
+    assert all(isinstance(frame, memoryview) for batch in batches for frame in batch)
+    assert all(frame.nbytes > 0 for batch in batches for frame in batch)
     assert open_count == 1

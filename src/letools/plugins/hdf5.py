@@ -26,6 +26,7 @@ from letools.model import (
     DatasetMetadata,
     Episode,
     EpisodeDataProfile,
+    FrameBuffer,
     FrameSequence,
     MediaProfile,
 )
@@ -131,7 +132,7 @@ class HDF5FrameSequence(FrameSequence):
             for value in values
         )
 
-    def iter_batches(self, batch_frames: int) -> Iterator[tuple[bytes, ...]]:
+    def iter_batches(self, batch_frames: int) -> Iterator[tuple[FrameBuffer, ...]]:
         """Yield every batch while holding one read-only HDF5 file handle."""
 
         if batch_frames <= 0:
@@ -141,12 +142,9 @@ class HDF5FrameSequence(FrameSequence):
             for start in range(0, self.frame_count, batch_frames):
                 stop = min(self.frame_count, start + batch_frames)
                 values = dataset[start:stop]
-                batch = tuple(
-                    value.tobytes() if isinstance(value, np.ndarray) else bytes(value)
-                    for value in values
-                )
-                # A suspended generator retains its locals. Drop the HDF5 slice
-                # before yielding so each worker holds only one JPEG batch.
+                batch = tuple(memoryview(value) for value in values)
+                # Each view owns a reference to its NumPy array. The outer
+                # object array can be released without invalidating the batch.
                 del values
                 yield batch
 

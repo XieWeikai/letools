@@ -52,11 +52,15 @@ class VideoSlice:
         return self.end - self.start
 
 
+FrameBuffer = bytes | memoryview
+
+
 class FrameSequence(ABC):
-    """Batch-oriented source of encoded image frames.
+    """Batch-oriented source of encoded image frame buffers.
 
     Batches keep the plugin boundary outside the per-frame encoding loop and
-    allow an implementation to amortize source open costs.
+    allow an implementation to amortize source open costs. A yielded memoryview
+    must retain its backing allocation until the consumer advances the iterator.
     """
 
     frame_count: int
@@ -66,12 +70,12 @@ class FrameSequence(ABC):
     estimated_size_bytes: int
 
     @abstractmethod
-    def read_batch(self, start: int, stop: int) -> tuple[bytes, ...]:
+    def read_batch(self, start: int, stop: int) -> tuple[FrameBuffer, ...]:
         """Return encoded frames in the half-open interval [start, stop)."""
 
         raise NotImplementedError
 
-    def iter_batches(self, batch_frames: int) -> Iterator[tuple[bytes, ...]]:
+    def iter_batches(self, batch_frames: int) -> Iterator[tuple[FrameBuffer, ...]]:
         """Yield bounded frame batches while preserving source-specific locality.
 
         The default implementation delegates to the random-access contract.

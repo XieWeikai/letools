@@ -114,8 +114,11 @@ iterator delegates to random access, while a source may override it to retain
 an expensive resource for one sequence. The HDF5 plugin uses that hook to open
 an episode file once per camera encoding job and bounds the long-lived HDF5
 metadata cache to avoid multiplying the library's default cache by the video
-worker count. Encoded packets, decoded frames, HDF5 handles, and FFmpeg contexts
-remain inside the primitive that owns the whole operation.
+worker count. Batch elements implement the Python buffer protocol: HDF5 yields
+memoryviews that retain the vlen NumPy allocations through packet consumption,
+avoiding an intermediate full-payload `bytes` copy. Encoded packets, decoded
+frames, HDF5 handles, and FFmpeg contexts remain inside the primitive that owns
+the whole operation.
 
 ## 4. Module ownership and boundaries
 
