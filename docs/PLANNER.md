@@ -261,7 +261,7 @@ With auto conversion, an override remains fixed during calibration and
 execution:
 
 ```bash
-uv run letools convert SOURCE DESTINATION --to v3.0 --auto --workers 4
+letools convert SOURCE DESTINATION --to v3.0 --auto --workers 4
 ```
 
 ## 8. Fingerprint and cache

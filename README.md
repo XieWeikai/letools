@@ -12,6 +12,7 @@ benefits from lower per-item overhead.
 Detailed documentation:
 
 - [Usage guide](docs/USAGE.md)
+- [Installation and direct command setup](docs/INSTALLATION.md)
 - [Architecture and module boundaries](docs/ARCHITECTURE.md)
 - [Static planner design](docs/PLANNER.md)
 - [HDF5 source MVP acceptance](docs/HDF5_MVP.md)
@@ -25,15 +26,36 @@ Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) are required.
 ```bash
 git clone https://github.com/XieWeikai/letools.git
 cd letools
-uv sync --locked
-uv run letools doctor
+uv tool install .
+letools doctor
 ```
 
-That single sync command installs both the Python frontend and the matching
-prebuilt native wheel from the letools package index. On Linux x86-64 the native
-wheel includes the minimal FFmpeg 8 runtime used by Rust packet hashing,
-concatenation, and splitting. No compiler, Rust toolchain, FFmpeg headers,
-`pkg-config`, libclang, `LD_LIBRARY_PATH`, or shell environment file is needed.
+`uv tool install .` creates an isolated user-level environment and publishes the
+`letools` executable, normally under `~/.local/bin`. No virtual-environment
+activation is needed. If the command is not in `PATH`, run `uv tool update-shell`
+once and open a new shell. Developers who want a lockfile-exact environment can
+instead run `./scripts/link_letools.sh`; see the
+[installation guide](docs/INSTALLATION.md).
+
+Update or remove the standalone user command with:
+
+```bash
+git pull
+uv tool install --force .
+# uv tool uninstall letools
+```
+
+For an editable command that follows Python source changes in the checkout:
+
+```bash
+uv tool install --editable .
+```
+
+The install includes the Python frontend and matching prebuilt native wheel. On
+Linux x86-64 the native wheel includes the minimal FFmpeg 8 runtime used by Rust
+packet hashing, concatenation, and splitting. No compiler, Rust toolchain,
+FFmpeg headers, `pkg-config`, libclang, `LD_LIBRARY_PATH`, or shell environment
+file is needed.
 
 macOS, Windows, and Linux aarch64 receive the portable native filesystem
 primitives while PyAV handles video. PyAV's official wheel carries its own
@@ -41,69 +63,82 @@ FFmpeg runtime, so these platforms also need no system FFmpeg. A system or
 user-installed `ffmpeg` executable is detected by `letools doctor`, but runtime
 conversion never depends on finding it in `PATH`.
 
-## Command line
+## Command reference
+
+All commands support `-h` or `--help`. Result-producing commands write JSON to
+standard output and return a nonzero exit status on failure.
+
+### Convert
+
+```text
+letools convert SOURCE DESTINATION --to {v2.1,v3.0} [options]
+```
 
 Convert v2.1 to v3.0:
 
 ```bash
-uv run letools convert /data/dataset-v21 /data/dataset-v30 --to v3.0
+letools convert /data/dataset-v21 /data/dataset-v30 --to v3.0
 ```
 
 Convert v3.0 to v2.1:
 
 ```bash
-uv run letools convert /data/dataset-v30 /data/dataset-v21 --to v2.1
+letools convert /data/dataset-v30 /data/dataset-v21 --to v2.1
 ```
 
-Validate one dataset or compare two datasets semantically:
+Use automatic planning when the environment or dataset has not already been
+characterized:
 
 ```bash
-uv run letools validate /data/dataset-v30 --deep
-uv run letools compare /data/original /data/converted --videos
+letools convert /data/dataset-v21 /data/dataset-v30 --to v3.0 --auto
 ```
 
-Create an HDF5 mapping preset interactively, then convert with it:
+Convert HDF5 through an explicit mapping preset:
 
 ```bash
-uv run letools tools hdf5-preset create /data/hdf5 --name my-dataset
-uv run letools convert /data/hdf5 /data/dataset-v30 \
+letools tools hdf5-preset create /data/hdf5 --name my-dataset
+letools convert /data/hdf5 /data/dataset-v30 \
   --source-format hdf5 --preset my-dataset --to v3.0 --auto
 ```
 
-Useful conversion controls:
-
-```text
---workers N              concurrent Parquet groups
---video-workers N        concurrent video remux jobs
---data-file-size-mb N    v3 Parquet target size
---video-file-size-mb N   v3 video target size
---overwrite              replace an existing destination
---no-validate            skip built-in shallow validation
-```
+| Option | Meaning |
+| --- | --- |
+| `--to VERSION` | Required target; accepts `v2.1`, `2.1`, `v3.0`, or `3.0` |
+| `--source-format auto\|lerobot\|hdf5` | Select source parsing; default is LeRobot auto-detection |
+| `--preset NAME_OR_PATH` | Load an HDF5 preset by user-store name or JSON path; implies HDF5 |
+| `--workers N` | Concurrent Parquet/data groups |
+| `--video-workers N` | Concurrent video remux or encode jobs |
+| `--data-file-size-mb N` | Approximate uncompressed Parquet shard target for v3 output only |
+| `--video-file-size-mb N` | Approximate video shard target for v3 output only |
+| `--auto` | Plan a static execution configuration, then convert |
+| `--calibration-seconds N` | Auto-planner calibration time budget; default 10 seconds |
+| `--calibration-mb N` | Auto-planner read and write budget; default 1024 MiB each |
+| `--no-cache` | Ignore and do not write the planner cache for this run |
+| `--overwrite` | Replace an existing destination only after staged output validates |
+| `--no-validate` | Skip the built-in shallow validation gate |
 
 Conversions write into a staging directory and publish the destination only
 after success. Existing destinations are not replaced unless `--overwrite` is
-provided.
+provided. Without `--auto`, explicit worker values or fixed defaults are used.
+The two file-size controls do not apply to v2.1 output.
 
-### Automatic planning
+### Plan
+
+```text
+letools plan SOURCE DESTINATION --to {v2.1,v3.0} [options]
+```
 
 Inspect the environment and print a read-only static plan:
 
 ```bash
-uv run letools plan /data/dataset-v21 /data/dataset-v30 --to v3.0
+letools plan /data/dataset-v21 /data/dataset-v30 --to v3.0
 ```
 
 Add bounded workload calibration when the plan will be used for a substantial
 conversion:
 
 ```bash
-uv run letools plan /data/dataset-v21 /data/dataset-v30 --to v3.0 --calibrate
-```
-
-Plan and execute in one command:
-
-```bash
-uv run letools convert /data/dataset-v21 /data/dataset-v30 --to v3.0 --auto
+letools plan /data/dataset-v21 /data/dataset-v30 --to v3.0 --calibrate
 ```
 
 The planner reads Slurm, process-affinity, cgroup, memory, dataset, and source
@@ -118,12 +153,67 @@ and planner-algorithm fingerprint. Use `--no-cache` for an independent cold
 measurement. See [the planner design](docs/PLANNER.md) and
 [Slurm acceptance results](docs/PLANNER_BENCHMARK.md).
 
+`plan` accepts the same source, preset, worker, target-size, calibration-budget,
+and cache options as automatic conversion. `--calibrate` enables bounded real
+work for `plan`; `convert --auto` enables it by default when useful. `plan` never
+writes the destination and does not create a separate plan file. Automatic
+conversion invokes the same planner and immediately executes the returned
+immutable configuration.
+
+### HDF5 preset tools
+
+```text
+letools tools hdf5-preset create SOURCE [--name NAME] [--output FILE]
+letools tools hdf5-preset list
+letools tools hdf5-preset show NAME_OR_PATH
+```
+
+`create` scans a representative HDF5 episode and interactively selects numeric,
+task, and encoded-image fields. `--episode-glob PATTERN` changes episode
+discovery, `--output FILE` creates a portable project preset, and `--overwrite`
+permits replacing that file. Without `--output`, presets live under
+`${XDG_CONFIG_HOME:-$HOME/.config}/letools/hdf5-presets/`.
+
+`list` prints summaries from the user store. `show` prints the full versioned
+JSON mapping. In a TTY, `convert --source-format hdf5` can present a stored-preset
+menu; non-interactive and Slurm jobs must pass `--preset`. See
+[HDF5 mapping presets](docs/HDF5_PRESETS.md) for the schema and supported HDF5
+representations.
+
+### Validate and compare
+
+```bash
+letools validate /data/dataset-v30
+letools validate /data/dataset-v30 --deep
+letools compare /data/original /data/converted
+letools compare /data/original /data/converted --videos
+```
+
+Shallow validation checks metadata, paths, episode ranges, schemas, and file
+availability. `--deep` also reads complete data tables and decodes media.
+`compare` checks semantic metadata and data by default; `--skip-data` omits table
+values and `--videos` adds encoded packet-payload comparison. It returns zero
+only when the requested checks are equal.
+
+### Doctor
+
+```bash
+letools doctor
+```
+
+`doctor` reports the Python package, native provider and capabilities, PyAV's
+linked FFmpeg libraries, and any system `ffmpeg` executable. It is read-only and
+does not install or modify providers.
+
+### Slurm
+
 On a Slurm cluster, submit conversion commands through the site's normal
-wrapper. For example:
+wrapper. A user-level command installed on a shared home is visible on compute
+nodes when the job inherits `~/.local/bin` in `PATH`:
 
 ```bash
 sbatch --cpus-per-task=8 --mem=48G --wrap \
-  'cd /path/to/letools && uv run letools convert /data/v21 /data/v30 --to v3.0'
+  'letools convert /data/v21 /data/v30 --to v3.0 --auto'
 ```
 
 ## Python API
@@ -139,6 +229,12 @@ result = convert(
 )
 print(result)
 ```
+
+The public API also exports `plan_conversion()`, `plan_and_convert()`,
+`validate_dataset()`, `compare_datasets()`, `open_dataset()`, the built-in
+LeRobot source classes, and `HDF5Source` plus its mapping field classes. The
+[usage guide](docs/USAGE.md) contains complete Python examples, custom-source
+requirements, result types, and validation behavior.
 
 ## Architecture
 

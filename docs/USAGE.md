@@ -7,14 +7,22 @@
 ```bash
 git clone https://github.com/XieWeikai/letools.git
 cd letools
-uv sync --locked
-uv run letools doctor
+uv tool install .
+letools doctor
 ```
 
-`uv sync --locked` installs the Python package, PyArrow, PyAV, and the matching
-`letools-native` wheel from the package index recorded in `uv.lock`. Normal
-users do not need Rust, a C compiler, FFmpeg headers, `pkg-config`, libclang, or
-an environment script.
+`uv tool install .` installs the Python package, PyArrow, PyAV, HDF5 support, and
+the matching `letools-native` wheel into an isolated user environment. It also
+publishes the `letools` executable, normally under `~/.local/bin`, so no virtual
+environment activation or `uv run` prefix is needed. If the shell cannot find
+the command, run `uv tool update-shell` once and start a new shell. Normal users
+do not need Rust, a C compiler, FFmpeg headers, `pkg-config`, libclang, or an
+environment script.
+
+Developers can use `uv tool install --editable .`, or reproduce `uv.lock` and
+link its command with `./scripts/link_letools.sh`. Installation modes, updates,
+removal, command discovery, and Slurm node visibility are detailed in
+[INSTALLATION.md](INSTALLATION.md).
 
 On Linux x86-64, the released native wheel contains its own minimal FFmpeg 8
 runtime for Rust video operations. PyAV contains its own FFmpeg runtime. These
@@ -25,7 +33,7 @@ to PyAV automatically.
 Run `doctor` after installation to see the selected providers:
 
 ```bash
-uv run letools doctor
+letools doctor
 ```
 
 The report includes the letools and native-wheel versions, native build
@@ -57,7 +65,7 @@ For a substantial conversion, automatic planning is the recommended entry
 point:
 
 ```bash
-uv run letools convert \
+letools convert \
   /data/dataset-v21 \
   /data/dataset-v30 \
   --to v3.0 \
@@ -67,7 +75,7 @@ uv run letools convert \
 ### v3.0 to v2.1
 
 ```bash
-uv run letools convert \
+letools convert \
   /data/dataset-v30 \
   /data/dataset-v21 \
   --to v2.1 \
@@ -90,7 +98,7 @@ FileExistsError: Destination already exists: ...
 Allow replacement explicitly:
 
 ```bash
-uv run letools convert SOURCE DESTINATION --to v3.0 --auto --overwrite
+letools convert SOURCE DESTINATION --to v3.0 --auto --overwrite
 ```
 
 The previous destination is not removed until backend writing and built-in
@@ -103,7 +111,7 @@ Without `--auto`, the CLI uses fixed defaults: up to eight data workers, up to
 three video workers, 100 MiB v3 Parquet targets, and 200 MiB v3 video targets.
 
 ```bash
-uv run letools convert SOURCE DESTINATION --to v3.0 \
+letools convert SOURCE DESTINATION --to v3.0 \
   --workers 8 \
   --video-workers 3 \
   --data-file-size-mb 100 \
@@ -140,7 +148,7 @@ When performance options are supplied together with `--auto`, they are hard
 constraints. The planner fills only omitted fields:
 
 ```bash
-uv run letools convert SOURCE DESTINATION --to v3.0 \
+letools convert SOURCE DESTINATION --to v3.0 \
   --auto \
   --workers 4
 ```
@@ -163,7 +171,7 @@ the selected `plan` and the nested `conversion` result. Useful fields include:
 Redirect JSON when retaining a run record:
 
 ```bash
-uv run letools convert SOURCE DESTINATION --to v3.0 --auto > conversion.json
+letools convert SOURCE DESTINATION --to v3.0 --auto > conversion.json
 ```
 
 ## 4. Inspect a plan without converting
@@ -172,7 +180,7 @@ Without `--calibrate`, plan mode performs read-only profiling of resources,
 dataset shape, and both storage paths, then prints a static plan:
 
 ```bash
-uv run letools plan SOURCE DESTINATION --to v3.0
+letools plan SOURCE DESTINATION --to v3.0
 ```
 
 It does not create the destination and does not execute a full conversion.
@@ -181,7 +189,7 @@ Metadata and Parquet footers are read to build the dataset profile.
 Add bounded real-work calibration:
 
 ```bash
-uv run letools plan SOURCE DESTINATION --to v3.0 \
+letools plan SOURCE DESTINATION --to v3.0 \
   --calibrate \
   --calibration-seconds 10 \
   --calibration-mb 1024
@@ -228,7 +236,7 @@ fingerprint.
 Ignore cache for one independent run:
 
 ```bash
-uv run letools convert SOURCE DESTINATION --to v3.0 --auto --no-cache
+letools convert SOURCE DESTINATION --to v3.0 --auto --no-cache
 ```
 
 Inspect or clear the default cache:
@@ -248,7 +256,7 @@ referenced file existence, Parquet row counts, and basic feature-shape
 consistency:
 
 ```bash
-uv run letools validate /data/dataset-v30
+letools validate /data/dataset-v30
 ```
 
 Deep validation additionally reads every episode table, verifies episode and
@@ -256,7 +264,7 @@ frame index columns, and checks that video durations cover all referenced
 slices:
 
 ```bash
-uv run letools validate /data/dataset-v30 --deep
+letools validate /data/dataset-v30 --deep
 ```
 
 Conversions run shallow validation automatically before publication. Use deep
@@ -273,20 +281,20 @@ Compare metadata, tasks, normalized feature schemas, episode statistics, and
 all Arrow values:
 
 ```bash
-uv run letools compare /data/original /data/converted
+letools compare /data/original /data/converted
 ```
 
 Also compare encoded video packet payloads per episode and camera:
 
 ```bash
-uv run letools compare /data/original /data/converted --videos
+letools compare /data/original /data/converted --videos
 ```
 
 Skip Arrow value comparison when checking only metadata/statistics or isolating
 video work:
 
 ```bash
-uv run letools compare /data/original /data/converted --skip-data --videos
+letools compare /data/original /data/converted --skip-data --videos
 ```
 
 Video comparison hashes encoded packet payloads, not complete MP4 files. This
@@ -296,8 +304,8 @@ media. It does not decode pixels.
 For conversion acceptance, use both deep validation and full comparison:
 
 ```bash
-uv run letools validate /data/converted --deep
-uv run letools compare /data/original /data/converted --videos
+letools validate /data/converted --deep
+letools compare /data/original /data/converted --videos
 ```
 
 ## 7. Run under Slurm
@@ -313,7 +321,7 @@ sbatch \
   --job-name=letools-convert \
   --cpus-per-task=8 \
   --mem=48G \
-  --wrap 'cd /path/to/letools && uv run letools convert /data/v21 /data/v30 --to v3.0 --auto'
+  --wrap 'letools convert /data/v21 /data/v30 --to v3.0 --auto'
 ```
 
 For an interactive allocation:
@@ -321,8 +329,7 @@ For an interactive allocation:
 ```bash
 salloc --cpus-per-task=8 --mem=48G
 srun --pty bash
-cd /path/to/letools
-uv run letools convert /data/v21 /data/v30 --to v3.0 --auto
+letools convert /data/v21 /data/v30 --to v3.0 --auto
 ```
 
 The planner takes the minimum valid CPU limit visible through process affinity,
@@ -436,14 +443,14 @@ HDF5 has no universal robotics schema. The built-in source therefore requires a
 mapping. Create it interactively from a representative episode:
 
 ```bash
-uv run letools tools hdf5-preset create /data/hdf5 --name my-dataset
-uv run letools tools hdf5-preset show my-dataset
+letools tools hdf5-preset create /data/hdf5 --name my-dataset
+letools tools hdf5-preset show my-dataset
 ```
 
 Convert with a stored preset:
 
 ```bash
-uv run letools convert /data/hdf5 /data/lerobot-v30 \
+letools convert /data/hdf5 /data/lerobot-v30 \
   --source-format hdf5 \
   --preset my-dataset \
   --to v3.0 \
@@ -609,8 +616,9 @@ Override the profile methods for any source that is not path-based Parquet.
 Custom sources work directly with `convert()` and `compare_datasets()` when
 passed as objects. `plan_conversion()` now uses only the format-neutral
 profile methods and does not assume that source data is stored as Parquet.
-Standalone validation, the CLI, and `open_dataset()` auto-detection currently
-support only physical LeRobot v2.1 and v3.0 directories.
+Standalone validation and `open_dataset()` path auto-detection currently support
+only physical LeRobot v2.1 and v3.0 directories. CLI conversion and planning can
+also construct `HDF5Source` from an explicit preset.
 
 ## 11. Development setup
 
@@ -618,6 +626,7 @@ Install test and native development groups:
 
 ```bash
 uv sync --locked --group test --group native-dev
+./scripts/link_letools.sh --no-sync
 uv run pytest -q
 cargo test --manifest-path native/Cargo.toml --locked
 cargo clippy --manifest-path native/Cargo.toml --locked -- -D warnings
@@ -648,6 +657,20 @@ runtime dependencies and relative rpaths.
 
 ## 12. Common failures
 
+### `letools: command not found`
+
+Inspect the configured executable directory and current command resolution:
+
+```bash
+uv tool dir --bin
+command -v letools
+```
+
+For `uv tool install`, run `uv tool update-shell` once and open a new shell. For
+the locked project environment, rerun `./scripts/link_letools.sh`. On Slurm,
+check `command -v letools` inside the allocation because scheduler jobs may use a
+different `PATH` from the login shell.
+
 ### Source and target versions match
 
 Direct same-version rewriting is rejected. Select the other supported version
@@ -667,9 +690,10 @@ flags only when deliberately imposing hard constraints.
 
 ### Native video capability is unavailable
 
-Run `uv run letools doctor`. Conversion should use the PyAV fallback. If the
-native wheel is missing entirely, rerun `uv sync --locked`; do not manually
-combine unrelated native and Python package versions.
+Run `letools doctor`. Conversion should use the PyAV fallback. If the
+native wheel is missing entirely, recreate the selected installation with
+`uv tool install --force .` or, for locked development, `uv sync --locked`; do
+not manually combine unrelated native and Python package versions.
 
 ### Validation differs but files are not byte-identical
 

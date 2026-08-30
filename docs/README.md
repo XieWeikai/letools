@@ -5,6 +5,8 @@ performance evidence:
 
 - [Usage guide](USAGE.md): installation, every CLI command, Python APIs,
   validation, HDF5 mappings, custom sources, Slurm operation, and troubleshooting.
+- [Installation](INSTALLATION.md): direct command setup, uv tool internals,
+  editable and locked development modes, updates, removal, and Slurm visibility.
 - [Architecture](ARCHITECTURE.md): module ownership, boundaries, data model,
   conversion pipelines, native acceleration, and extension points.
 - [Static planner](PLANNER.md): planner scope, resource and I/O inputs,

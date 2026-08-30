@@ -17,7 +17,7 @@ name resembles `qpos`, `action`, or a camera name.
 Run the wizard in an interactive terminal:
 
 ```bash
-uv run letools tools hdf5-preset create /data/hdf5 --name soft-fold
+letools tools hdf5-preset create /data/hdf5 --name soft-fold
 ```
 
 The wizard:
@@ -33,7 +33,7 @@ The wizard:
 Use a different episode pattern when necessary:
 
 ```bash
-uv run letools tools hdf5-preset create /data/hdf5 \
+letools tools hdf5-preset create /data/hdf5 \
   --name soft-fold \
   --episode-glob 'episode_*.hdf5'
 ```
@@ -48,7 +48,7 @@ That user store is convenient for local repeated use. To review and version a
 preset with a project, give an explicit path:
 
 ```bash
-uv run letools tools hdf5-preset create /data/hdf5 \
+letools tools hdf5-preset create /data/hdf5 \
   --name soft-fold \
   --output ./presets/soft-fold.json
 ```
@@ -58,9 +58,9 @@ An existing file is protected unless `--overwrite` is supplied.
 ## Inspect stored presets
 
 ```bash
-uv run letools tools hdf5-preset list
-uv run letools tools hdf5-preset show soft-fold
-uv run letools tools hdf5-preset show ./presets/soft-fold.json
+letools tools hdf5-preset list
+letools tools hdf5-preset show soft-fold
+letools tools hdf5-preset show ./presets/soft-fold.json
 ```
 
 `list` includes only the standard user store. `show`, `convert`, and `plan`
@@ -71,7 +71,7 @@ accept either a stored name or an explicit JSON path.
 The reproducible, batch-safe form names the preset explicitly:
 
 ```bash
-uv run letools convert \
+letools convert \
   /data/hdf5 \
   /data/lerobot-v30 \
   --source-format hdf5 \
@@ -83,7 +83,7 @@ uv run letools convert \
 An explicit path works identically:
 
 ```bash
-uv run letools convert /data/hdf5 /data/lerobot-v21 \
+letools convert /data/hdf5 /data/lerobot-v21 \
   --source-format hdf5 \
   --preset ./presets/soft-fold.json \
   --to v2.1
@@ -92,7 +92,7 @@ uv run letools convert /data/hdf5 /data/lerobot-v21 \
 In an interactive terminal, omit `--preset` to choose from the user store:
 
 ```bash
-uv run letools convert /data/hdf5 /data/lerobot-v30 \
+letools convert /data/hdf5 /data/lerobot-v30 \
   --source-format hdf5 \
   --to v3.0
 ```
@@ -102,7 +102,7 @@ instead of waiting indefinitely for terminal input. The planner uses the same
 source options:
 
 ```bash
-uv run letools plan /data/hdf5 /data/lerobot-v30 \
+letools plan /data/hdf5 /data/lerobot-v30 \
   --source-format hdf5 \
   --preset soft-fold \
   --to v3.0 \

@@ -19,9 +19,18 @@ jobs:
           version: "0.12.6"
           enable-cache: true
       - run: uv sync --locked --group test
+      - run: |
+          uv tool install .
+          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
       - run: uv run pytest -q
       - run: |
-          uv run letools doctor | grep '"video-split"'
+          letools doctor | grep '"video-split"'
+      - name: Locked environment command link
+        run: |
+          export UV_TOOL_BIN_DIR="${RUNNER_TEMP}/letools-bin"
+          ./scripts/link_letools.sh --no-sync
+          "${UV_TOOL_BIN_DIR}/letools" --help
+          ./scripts/link_letools.sh --remove
 
   python-fallback:
     name: Python fallback
