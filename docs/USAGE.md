@@ -368,7 +368,7 @@ the Python API.
 
 Sources that provide `FrameSequence` media use `ConversionConfig.video_encoding`.
 The default writes JPEG sources directly as an MJPEG/yuvj420p MP4 stream in
-batches of 32, preserving every source JPEG packet without pixel decoding or
+batches of 48, preserving every source JPEG packet without pixel decoding or
 lossy re-encoding. This is the fastest and highest-fidelity path, but its output
 is normally much larger than MPEG-4 transcoding. These settings do not affect
 LeRobot-to-LeRobot conversion: `VideoSlice` inputs continue to be remuxed without

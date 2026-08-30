@@ -15,7 +15,7 @@ class VideoEncodingConfig:
 
     codec: str = "mjpeg"
     pixel_format: str = "yuvj420p"
-    batch_frames: int = 32
+    batch_frames: int = 48
     codec_threads: int = 1
 
 

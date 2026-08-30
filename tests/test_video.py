@@ -36,6 +36,10 @@ class BytesFrameSequence(FrameSequence):
         return self._frames[start:stop]
 
 
+def test_default_frame_batch_is_profiled_value() -> None:
+    assert VideoEncodingConfig().batch_frames == 48
+
+
 def _make_video(path: Path, value: int) -> None:
     container = av.open(str(path), "w")
     stream = container.add_stream("mpeg4", rate=10)
