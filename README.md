@@ -14,6 +14,7 @@ Detailed documentation:
 - [Usage guide](docs/USAGE.md)
 - [Architecture and module boundaries](docs/ARCHITECTURE.md)
 - [Static planner design](docs/PLANNER.md)
+- [HDF5 source MVP acceptance](docs/HDF5_MVP.md)
 - [Documentation index](docs/README.md)
 
 ## Quick start
