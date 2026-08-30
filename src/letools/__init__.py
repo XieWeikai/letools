@@ -1,3 +1,5 @@
+"""Stable public Python API for conversion, planning, and source plugins."""
+
 from .conversion import ConversionConfig, ConversionResult, convert
 from .conversion_types import VideoEncodingConfig
 from .planner import (

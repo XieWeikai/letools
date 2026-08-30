@@ -1,3 +1,5 @@
+"""Build a hash-pinned PEP 503 page for released letools-native wheels."""
+
 from __future__ import annotations
 
 import hashlib
@@ -7,6 +9,8 @@ from pathlib import Path
 
 
 def main() -> None:
+    """Generate package and root index pages from one release wheel directory."""
+
     wheel_dir, output_dir, repository, tag = map(Path, sys.argv[1:5])
     repository_name = repository.as_posix()
     tag_name = tag.as_posix()

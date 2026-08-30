@@ -1,3 +1,5 @@
+"""Deterministic static worker and v3 grouping policy."""
+
 from __future__ import annotations
 
 import math
@@ -20,6 +22,8 @@ _DATA_TASK_OVERHEAD_BYTES = 16 * _MIB
 
 @dataclass(frozen=True)
 class HeuristicChoice:
+    """Internal planner decision plus memory/task estimates and explanations."""
+
     workers: int
     video_workers: int
     data_file_size_mb: int | None
@@ -31,6 +35,8 @@ class HeuristicChoice:
 
 
 def worker_candidates(cpu_limit: int, task_limit: int) -> tuple[int, ...]:
+    """Clip the stable worker lattice to effective CPUs and useful tasks."""
+
     limit = max(1, min(cpu_limit, max(1, task_limit)))
     values = {value for value in WORKER_LATTICE if value <= limit}
     values.add(limit)
@@ -103,6 +109,13 @@ def choose_heuristic(
     destination_storage: StorageProfile,
     overrides: PerformanceOverrides,
 ) -> HeuristicChoice:
+    """Choose safe defaults from resources, workload shape, storage, and overrides.
+
+    The heuristic first converges data target size and memory-safe concurrency,
+    then chooses media concurrency according to remux versus encoding work.
+    Explicit overrides are constraints and are rejected when infeasible.
+    """
+
     reasons: list[str] = []
     numeric_overrides = {
         "workers": overrides.workers,

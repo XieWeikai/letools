@@ -372,3 +372,19 @@ backend private objects.
 Any performance change must preserve deep validation and bidirectional semantic
 comparison. Follow the [self-improvement protocol](../self-improve/PROTOCOL.md)
 for profiling, resource accounting, acceptance, and reporting.
+
+## 15. Code documentation conventions
+
+Every production Python module states its ownership boundary in a module
+docstring. Public classes, functions, abstract methods, plugin capabilities, and
+planner evidence types document their contract and important invariants. Rust
+entry points document the GIL boundary, atomic publication, and packet/timestamp
+semantics. Benchmark and release scripts state which setup work is excluded from
+measurement.
+
+Inline comments are reserved for constraints that are not clear from types and
+control flow, such as FFmpeg codec-tag reset, timestamp rebasing, cache
+compatibility, or a deliberate compatibility adapter. Comments should explain
+why a boundary or invariant exists; they should not restate assignments or loop
+syntax. When behavior changes, the corresponding docstring and the user-facing
+architecture/usage document are reviewed in the same commit.

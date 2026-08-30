@@ -1,3 +1,5 @@
+"""LeRobot v2.1 writer: per-episode data/video files and JSONL metadata."""
+
 from __future__ import annotations
 
 import copy
@@ -19,6 +21,8 @@ from letools.telemetry import StageRecorder
 
 
 class LeRobotV21Backend(DatasetBackend):
+    """Fan format-neutral episodes out into the legacy v2.1 layout."""
+
     version = "v2.1"
 
     def write(
@@ -28,6 +32,13 @@ class LeRobotV21Backend(DatasetBackend):
         config: ConversionConfig,
         recorder: StageRecorder,
     ) -> None:
+        """Write metadata, locality-grouped data, and per-episode media.
+
+        Locality grouping ensures a shared v3 shard is opened once per worker
+        group. Media dispatch preserves VideoSlice packet payloads and encodes
+        FrameSequence inputs only when the source requires it.
+        """
+
         metadata_started = time.perf_counter()
         info = copy.deepcopy(source.metadata.info)
         info["codebase_version"] = "v2.1"

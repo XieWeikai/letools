@@ -1,3 +1,5 @@
+"""Low-overhead in-process phase timing shared by planner and backends."""
+
 from __future__ import annotations
 
 import threading
@@ -9,6 +11,8 @@ from typing import Iterator
 
 @dataclass(frozen=True)
 class StageMetrics:
+    """Accumulated wall time and optional work counters for one named phase."""
+
     elapsed_seconds: float
     tasks: int = 0
     input_bytes: int = 0
@@ -31,6 +35,8 @@ class StageRecorder:
         input_bytes: int = 0,
         output_bytes: int = 0,
     ) -> None:
+        """Atomically accumulate one observation into a named stage."""
+
         with self._lock:
             value = self._values.setdefault(name, [0.0, 0, 0, 0])
             value[0] += elapsed_seconds
@@ -47,6 +53,8 @@ class StageRecorder:
         input_bytes: int = 0,
         output_bytes: int = 0,
     ) -> Iterator[None]:
+        """Measure a context and accumulate elapsed time even on failure."""
+
         started = time.perf_counter()
         try:
             yield
@@ -60,6 +68,8 @@ class StageRecorder:
             )
 
     def snapshot(self) -> dict[str, StageMetrics]:
+        """Return an immutable point-in-time copy of all recorded stages."""
+
         with self._lock:
             return {
                 name: StageMetrics(float(value[0]), int(value[1]), int(value[2]), int(value[3]))

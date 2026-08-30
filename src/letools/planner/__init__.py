@@ -1,3 +1,5 @@
+"""Public static planner API and immutable evidence types."""
+
 from .api import plan_and_convert, plan_conversion
 from .types import (
     CalibrationMeasurement,

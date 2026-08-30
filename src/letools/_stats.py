@@ -1,3 +1,5 @@
+"""Episode-stat flattening and weighted dataset-stat aggregation."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,8 @@ import numpy as np
 def aggregate_episode_stats(
     episodes: list[dict[str, dict[str, Any]]],
 ) -> dict[str, dict[str, list[Any]]]:
+    """Combine per-episode moments using counts and between-mean variance."""
+
     result: dict[str, dict[str, list[Any]]] = {}
     for feature in sorted({key for episode in episodes for key in episode}):
         values = [episode[feature] for episode in episodes if feature in episode]
@@ -40,6 +44,8 @@ def aggregate_episode_stats(
 
 
 def flatten_stats(stats: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Flatten nested feature/stat keys into v3 episode column names."""
+
     return {
         f"stats/{feature}/{statistic}": value
         for feature, feature_stats in stats.items()

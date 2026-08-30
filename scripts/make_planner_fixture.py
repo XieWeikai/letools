@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Materialize a deterministic v2.1 subset used by planner benchmarks."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,6 +18,8 @@ from letools.validation import validate_dataset
 
 
 class SubsetSource(DatasetSource):
+    """Read-only view over the first N episodes of an existing v2.1 source."""
+
     def __init__(
         self,
         source: DatasetSource,
@@ -69,10 +73,14 @@ class SubsetSource(DatasetSource):
         )
 
     def read_episode(self, episode):
+        """Delegate table materialization to the immutable source fixture."""
+
         return self._source.read_episode(episode)
 
 
 def main() -> int:
+    """Write and deep-validate one benchmark fixture outside timed runs."""
+
     parser = argparse.ArgumentParser(description="Create a frozen v2.1 planner fixture")
     parser.add_argument("source", type=Path)
     parser.add_argument("destination", type=Path)

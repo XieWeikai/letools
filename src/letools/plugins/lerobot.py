@@ -1,3 +1,5 @@
+"""LeRobot v2.1/v3.0 readers normalized into format-neutral episodes."""
+
 from __future__ import annotations
 
 import json
@@ -38,6 +40,8 @@ def _metadata(version: str, info: dict[str, Any], tasks: dict[int, str]) -> Data
 
 
 class LeRobotV21Source(DatasetSource):
+    """Read legacy JSONL metadata and one Parquet/video file per episode."""
+
     def __init__(self, root: str | Path):
         self.root = Path(root).resolve()
         info = _read_json(self.root / "meta/info.json")
@@ -81,10 +85,14 @@ class LeRobotV21Source(DatasetSource):
         self.episodes = tuple(episodes)
 
     def read_episode(self, episode: Episode) -> pa.Table:
+        """Read the episode's complete v2.1 Parquet file."""
+
         return pq.read_table(episode.data_path)
 
 
 class LeRobotV30Source(DatasetSource):
+    """Read grouped v3 shards and expose logical row/time episode ranges."""
+
     def __init__(self, root: str | Path):
         self.root = Path(root).resolve()
         info = _read_json(self.root / "meta/info.json")
@@ -149,6 +157,8 @@ class LeRobotV30Source(DatasetSource):
         self._local = threading.local()
 
     def read_episode(self, episode: Episode) -> pa.Table:
+        """Slice one episode while reusing the current shard per worker thread."""
+
         if getattr(self._local, "path", None) != episode.data_path:
             self._local.path = episode.data_path
             self._local.table = pq.read_table(episode.data_path)
@@ -171,6 +181,8 @@ class LeRobotV30Source(DatasetSource):
 
 
 def open_dataset(root: str | Path) -> DatasetSource:
+    """Detect a physical LeRobot version from info.json and open its reader."""
+
     root = Path(root)
     info = _read_json(root / "meta/info.json")
     version = info.get("codebase_version")

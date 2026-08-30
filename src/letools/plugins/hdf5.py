@@ -86,6 +86,8 @@ class HDF5FrameSequence(FrameSequence):
     estimated_size_bytes: int
 
     def read_batch(self, start: int, stop: int) -> tuple[bytes, ...]:
+        """Open the file for this worker and materialize one encoded-image batch."""
+
         if not 0 <= start <= stop <= self.frame_count:
             raise IndexError(
                 f"Invalid frame range [{start}, {stop}) for {self.frame_count} frames"
@@ -418,6 +420,8 @@ class HDF5Source(DatasetSource):
         }
 
     def read_episode(self, episode: Episode) -> pa.Table:
+        """Read mapped numeric arrays and append canonical generated columns."""
+
         with h5py.File(episode.data_path, "r") as handle:
             columns = {
                 field.target_key: numpy_to_arrow(
@@ -438,9 +442,13 @@ class HDF5Source(DatasetSource):
         return pa.table(columns)
 
     def data_profile(self, episode: Episode) -> EpisodeDataProfile:
+        """Return the profile computed during the constructor's schema scan."""
+
         return self._profiles[episode.index]
 
     def media_profile(self, episode: Episode, key: str) -> MediaProfile:
+        """Describe one stable HDF5 dataset as an encoding-required media input."""
+
         media = self.media_input(episode, key)
         assert isinstance(media, HDF5FrameSequence)
         return MediaProfile(
@@ -451,6 +459,8 @@ class HDF5Source(DatasetSource):
         )
 
     def planner_identity(self) -> tuple[str, str]:
+        """Fingerprint every mapping field so semantic plans cannot collide."""
+
         payload = json.dumps(asdict(self.mapping), sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
         return "letools.plugins.hdf5.HDF5Source", digest

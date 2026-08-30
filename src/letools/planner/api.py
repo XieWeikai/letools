@@ -1,3 +1,9 @@
+"""Planner orchestration: inspect, choose, fingerprint, calibrate, and cache.
+
+Planning always returns a static ConversionPlan. This module never requests
+resources or adjusts a conversion after execution begins.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -80,6 +86,14 @@ def plan_conversion(
     cache_directory: Path | None = None,
     cache_ttl_seconds: float = 7 * 24 * 60 * 60,
 ) -> ConversionPlan:
+    """Build a static plan for the resources visible to this process.
+
+    Read-only resource/dataset/storage inspection and heuristic selection always
+    run. A matching cache entry can replace worker choices; otherwise optional
+    bounded calibration executes representative real conversion jobs before the
+    immutable plan is returned.
+    """
+
     started = time.perf_counter()
     overrides = overrides or PerformanceOverrides()
     dataset_source = open_dataset(source) if isinstance(source, (str, Path)) else source
@@ -190,6 +204,8 @@ def plan_and_convert(
     overwrite: bool = False,
     validate: bool = True,
 ) -> PlannedConversionResult:
+    """Plan once, translate the plan to ConversionConfig, and convert."""
+
     plan = plan_conversion(
         source,
         destination,

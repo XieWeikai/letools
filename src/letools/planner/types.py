@@ -1,3 +1,5 @@
+"""Serializable planner inputs, evidence, choices, and result containers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,6 +10,8 @@ from letools.conversion_types import ConversionConfig, ConversionResult
 
 @dataclass(frozen=True)
 class Distribution:
+    """Compact integer size/count distribution used in fingerprints and policy."""
+
     count: int
     total: int
     minimum: int
@@ -18,6 +22,8 @@ class Distribution:
 
 @dataclass(frozen=True)
 class ResourceProfile:
+    """Effective allocation plus every observed CPU and memory constraint."""
+
     effective_cpus: int
     effective_memory_bytes: int
     affinity_cpus: int
@@ -31,6 +37,8 @@ class ResourceProfile:
 
 @dataclass(frozen=True)
 class StorageProfile:
+    """Resolved mount identity, storage class, and current capacity evidence."""
+
     requested_path: Path
     existing_path: Path
     mount_point: Path
@@ -62,23 +70,33 @@ class DatasetProfile:
     # plan JSON and new policy code use storage-neutral terminology.
     @property
     def parquet_uncompressed_bytes(self) -> Distribution:
+        """Compatibility alias for data_logical_bytes."""
+
         return self.data_logical_bytes
 
     @property
     def parquet_physical_bytes(self) -> Distribution:
+        """Compatibility alias for data_physical_bytes."""
+
         return self.data_physical_bytes
 
     @property
     def video_physical_bytes(self) -> Distribution:
+        """Compatibility alias for media_input_bytes."""
+
         return self.media_input_bytes
 
     @property
     def episodes_per_data_file(self) -> Distribution:
+        """Compatibility alias for episodes_per_data_resource."""
+
         return self.episodes_per_data_resource
 
 
 @dataclass(frozen=True)
 class PerformanceOverrides:
+    """Optional hard constraints supplied by a caller, not planner hints."""
+
     workers: int | None = None
     video_workers: int | None = None
     data_file_size_mb: int | None = None
@@ -87,6 +105,8 @@ class PerformanceOverrides:
 
 @dataclass(frozen=True)
 class CalibrationOptions:
+    """Independent wall-time, source-read, and temporary-write limits."""
+
     enabled: bool = False
     max_seconds: float = 10.0
     max_read_bytes: int = 1024**3
@@ -95,6 +115,8 @@ class CalibrationOptions:
 
 @dataclass(frozen=True)
 class CalibrationMeasurement:
+    """One real-work worker sample retained as plan evidence."""
+
     stage: str
     workers: int
     tasks: int
@@ -103,11 +125,15 @@ class CalibrationMeasurement:
 
     @property
     def throughput_bytes_per_second(self) -> float:
+        """Return useful input throughput with a zero-time guard."""
+
         return self.input_bytes / max(self.elapsed_seconds, 1e-9)
 
 
 @dataclass(frozen=True)
 class ConversionPlan:
+    """Immutable static execution choice and the evidence that produced it."""
+
     schema_version: int
     source: Path
     destination: Path
@@ -137,6 +163,8 @@ class ConversionPlan:
         overwrite: bool = False,
         validate: bool = True,
     ) -> ConversionConfig:
+        """Translate performance choices while preserving caller publication policy."""
+
         defaults = ConversionConfig()
         return ConversionConfig(
             workers=self.workers,
@@ -150,5 +178,7 @@ class ConversionPlan:
 
 @dataclass(frozen=True)
 class PlannedConversionResult:
+    """Pair the selected plan with the conversion it executed."""
+
     plan: ConversionPlan
     conversion: ConversionResult

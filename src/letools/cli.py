@@ -1,3 +1,5 @@
+"""Thin JSON command-line frontend over the public conversion APIs."""
+
 from __future__ import annotations
 
 import argparse
@@ -28,6 +30,8 @@ def _print(value: Any) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the stable CLI surface without embedding execution policy."""
+
     parser = argparse.ArgumentParser(prog="letools")
     commands = parser.add_subparsers(dest="command", required=True)
     conversion = commands.add_parser("convert", help="Convert a local LeRobot dataset")
@@ -69,6 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Dispatch one CLI command and return a process exit status."""
+
     args = build_parser().parse_args(argv)
     if args.command == "convert":
         if args.auto:

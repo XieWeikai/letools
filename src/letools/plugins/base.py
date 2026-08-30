@@ -1,3 +1,5 @@
+"""Read-side plugin protocol and compatibility adapters for path-based sources."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

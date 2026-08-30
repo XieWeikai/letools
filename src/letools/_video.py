@@ -1,3 +1,10 @@
+"""Coarse media operations with native remux and PyAV encode paths.
+
+The public primitives accept complete files, episode slices, or frame batches.
+No packet/frame object escapes this module, which preserves a stable Python/Rust
+boundary and avoids per-packet Python callbacks on existing LeRobot videos.
+"""
+
 from __future__ import annotations
 
 import hashlib

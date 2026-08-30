@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""Exhaustively benchmark a bounded planner candidate lattice offline.
+
+This is acceptance tooling, not production planning. It randomizes equivalent
+candidate order, retains raw samples, and compares selected-stage medians with
+the measured oracle while excluding fixture generation.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -99,6 +106,8 @@ def _selected_time(
 
 
 def run(args: argparse.Namespace) -> dict:
+    """Execute the planner and oracle matrix, returning a serializable report."""
+
     source: DatasetSource = open_dataset(args.source)
     plan = plan_conversion(
         source,
@@ -198,6 +207,8 @@ def run(args: argparse.Namespace) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build arguments shared by direct and storage-scenario oracle runners."""
+
     parser = argparse.ArgumentParser(description="Offline static planner oracle")
     parser.add_argument("source", type=Path)
     parser.add_argument("destination_parent", type=Path)
@@ -224,6 +235,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Run one configured oracle and publish its JSON evidence."""
+
     args = build_parser().parse_args()
     if args.repeats < 1:
         raise ValueError("--repeats must be positive")

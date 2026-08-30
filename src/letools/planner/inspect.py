@@ -1,3 +1,5 @@
+"""Read-only effective-resource, storage, and source-profile inspection."""
+
 from __future__ import annotations
 
 import os
@@ -118,6 +120,8 @@ def _cpu_model() -> str:
 
 
 def inspect_resources(environment: dict[str, str] | None = None) -> ResourceProfile:
+    """Return the tightest CPU/memory limits from host, affinity, cgroup, and Slurm."""
+
     environment = dict(os.environ if environment is None else environment)
     affinity = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1
     cgroup_cpus = _parse_cpu_set(
@@ -157,6 +161,8 @@ def _unescape_mount(value: str) -> str:
 
 
 def inspect_storage(path: str | Path) -> StorageProfile:
+    """Resolve a path to its longest matching mount and broad storage class."""
+
     requested = Path(path).resolve(strict=False)
     existing = _existing_ancestor(requested)
     best: tuple[Path, str, str] | None = None
@@ -219,6 +225,8 @@ def _distribution(values: list[int]) -> Distribution:
 
 
 def inspect_dataset(source: DatasetSource) -> DatasetProfile:
+    """Aggregate source-owned resource profiles without parsing source storage."""
+
     source_kind, source_configuration = source.planner_identity()
     data_resources = {}
     media_resources = {}

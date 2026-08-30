@@ -1,3 +1,10 @@
+"""Transactional coordinator shared by every source plugin and target backend.
+
+This module owns lifecycle policy: source dispatch, target selection, staging,
+validation, atomic publication, failure cleanup, and top-level stage timing. It
+does not parse source formats or decide physical target layout.
+"""
+
 from __future__ import annotations
 
 import shutil
@@ -27,6 +34,15 @@ def convert(
     *,
     config: ConversionConfig | None = None,
 ) -> ConversionResult:
+    """Convert a source into one supported LeRobot target transactionally.
+
+    A complete dataset is written to a unique sibling staging directory. The
+    destination is published only after backend completion and optional shallow
+    validation; any failure removes staging and leaves an existing destination
+    untouched. DatasetSource objects bypass path auto-detection, which is how
+    explicit HDF5 and third-party plugins enter the pipeline.
+    """
+
     config = config or ConversionConfig()
     started = time.perf_counter()
     recorder = StageRecorder()

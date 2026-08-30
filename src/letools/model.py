@@ -1,3 +1,5 @@
+"""Format-neutral semantic and resource contracts shared across letools."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -44,6 +46,8 @@ class VideoSlice:
 
     @property
     def duration(self) -> float:
+        """Return the represented encoded-stream interval in seconds."""
+
         return self.end - self.start
 
 
@@ -90,6 +94,8 @@ class Episode:
 
 @dataclass(frozen=True)
 class DatasetMetadata:
+    """Normalized dataset-wide semantics plus source metadata for adaptation."""
+
     version: str
     fps: int
     features: dict[str, dict[str, Any]]
@@ -102,6 +108,8 @@ class DatasetMetadata:
 
     @property
     def video_keys(self) -> tuple[str, ...]:
+        """Return video features in deterministic key order."""
+
         return tuple(
             sorted(key for key, value in self.features.items() if value["dtype"] == "video")
         )

@@ -1,3 +1,5 @@
+"""Read-only diagnostics for installed Python, native, and FFmpeg providers."""
+
 from __future__ import annotations
 
 import importlib.metadata
@@ -33,6 +35,8 @@ def _system_ffmpeg() -> dict[str, str] | None:
 
 
 def environment_report() -> dict[str, Any]:
+    """Return serializable provider versions without modifying the environment."""
+
     native_path = Path(_native._native.__file__).resolve() if _native.available() else None
     return {
         "letools": _distribution_version("letools"),

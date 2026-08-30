@@ -1,3 +1,5 @@
+"""Structural validation and semantic cross-layout dataset comparison."""
+
 from __future__ import annotations
 
 import copy
@@ -19,6 +21,8 @@ from letools.plugins import DatasetSource, open_dataset
 
 @dataclass
 class ValidationReport:
+    """Validity, checked totals, and non-mutating diagnostics for one dataset."""
+
     path: Path
     version: str | None
     valid: bool
@@ -30,6 +34,8 @@ class ValidationReport:
 
 @dataclass
 class ComparisonReport:
+    """Semantic equality result and the amount of data actually compared."""
+
     left: Path
     right: Path
     equal: bool
@@ -40,6 +46,13 @@ class ComparisonReport:
 
 
 def validate_dataset(path: str | Path, *, deep: bool = False) -> ValidationReport:
+    """Validate one physical LeRobot layout without attempting repair.
+
+    Shallow mode checks metadata, referenced files, row totals, and basic shape
+    consistency. Deep mode additionally reads every episode and verifies frame
+    indices and required video durations.
+    """
+
     path = Path(path).resolve()
     try:
         source = open_dataset(path)
@@ -185,6 +198,13 @@ def compare_datasets(
     check_data: bool = True,
     check_videos: bool = False,
 ) -> ComparisonReport:
+    """Compare two sources semantically rather than requiring byte identity.
+
+    Data comparison canonicalizes Arrow schemas and checks all values. Optional
+    video comparison hashes encoded packet payloads per episode/camera, allowing
+    harmless MP4 container differences while detecting changed media content.
+    """
+
     lhs = open_dataset(left) if isinstance(left, (str, Path)) else left
     rhs = open_dataset(right) if isinstance(right, (str, Path)) else right
     errors: list[str] = []

@@ -1,3 +1,5 @@
+"""Arrow schema normalization and zero-Python-object array construction."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -34,6 +36,13 @@ def _replace_leaf(data_type: pa.DataType, leaf: pa.DataType) -> pa.DataType:
 
 
 def canonical_data_schema(source: DatasetSource) -> pa.Schema:
+    """Derive one backend schema using declared feature dtypes as authority.
+
+    Physical source shards may encode the same logical field with slightly
+    different numeric leaves. Canonicalization retains list nesting and schema
+    metadata while replacing only declared primitive leaf types.
+    """
+
     schema = source.read_episode(source.episodes[0]).schema
     fields = []
     for field in schema:
@@ -54,6 +63,8 @@ def canonical_data_schema(source: DatasetSource) -> pa.Schema:
 
 
 def cast_data_table(table: pa.Table, schema: pa.Schema) -> pa.Table:
+    """Return a table matching schema, avoiding a cast when only metadata differs."""
+
     if table.schema.equals(schema, check_metadata=False):
         return table.replace_schema_metadata(schema.metadata)
     return table.cast(schema)

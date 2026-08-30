@@ -1,3 +1,5 @@
+"""Built-in source plugins and the shared DatasetSource contract."""
+
 from letools.model import Episode
 
 from .base import DatasetSource

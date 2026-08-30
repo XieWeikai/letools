@@ -1,3 +1,5 @@
+"""Immutable execution inputs and observable conversion result contracts."""
+
 from __future__ import annotations
 
 import os
@@ -19,6 +21,8 @@ class VideoEncodingConfig:
 
 @dataclass(frozen=True)
 class ConversionConfig:
+    """Explicit executor controls; no field performs resource discovery."""
+
     workers: int = max(1, min(8, os.cpu_count() or 1))
     video_workers: int = max(1, min(3, os.cpu_count() or 1))
     data_file_size_mb: int = 100
@@ -31,6 +35,8 @@ class ConversionConfig:
 
 @dataclass(frozen=True)
 class ConversionResult:
+    """Published conversion identity, totals, wall time, and phase metrics."""
+
     source: Path
     destination: Path
     source_version: str

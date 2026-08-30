@@ -1,3 +1,5 @@
+"""Atomic, expiring cache for calibrated planner choices only."""
+
 from __future__ import annotations
 
 import json
@@ -12,6 +14,8 @@ _CACHE_SCHEMA = 1
 
 
 def default_cache_directory() -> Path:
+    """Return the XDG-compatible planner cache directory."""
+
     root = os.environ.get("XDG_CACHE_HOME")
     return Path(root) / "letools" / "planner-v1" if root else Path.home() / ".cache/letools/planner-v1"
 
@@ -20,6 +24,8 @@ def load_cached_choice(
     fingerprint: str,
     cache_directory: Path | None = None,
 ) -> dict[str, Any] | None:
+    """Load one unexpired schema-compatible choice, treating errors as misses."""
+
     path = (cache_directory or default_cache_directory()) / f"{fingerprint}.json"
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -40,6 +46,8 @@ def save_cached_choice(
     ttl_seconds: float,
     cache_directory: Path | None = None,
 ) -> None:
+    """Publish one cache entry atomically through a same-directory temp file."""
+
     directory = cache_directory or default_cache_directory()
     directory.mkdir(parents=True, exist_ok=True)
     value = {

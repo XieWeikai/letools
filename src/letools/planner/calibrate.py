@@ -1,3 +1,10 @@
+"""Strictly bounded calibration using real backend data and media primitives.
+
+Calibration samples disjoint jobs where possible, writes only below a temporary
+destination directory, and removes outputs after every measurement. It chooses
+static worker counts; it is not a runtime controller.
+"""
+
 from __future__ import annotations
 
 import math
@@ -37,6 +44,8 @@ class _Budget:
     write_bytes: int = 0
 
     def allows(self, input_bytes: int) -> bool:
+        """Check time/read/write limits before admitting another job batch."""
+
         return (
             time.perf_counter() - self.started < self.options.max_seconds
             and self.read_bytes + input_bytes <= self.options.max_read_bytes
@@ -44,6 +53,8 @@ class _Budget:
         )
 
     def consume(self, input_bytes: int) -> None:
+        """Charge one completed symmetric read/write sample to the budget."""
+
         self.read_bytes += input_bytes
         self.write_bytes += input_bytes
 
@@ -291,6 +302,12 @@ def calibrate_workers(
     fixed_video_workers: bool = False,
     network_io: bool = False,
 ) -> tuple[HeuristicChoice, tuple[CalibrationMeasurement, ...]]:
+    """Measure representative worker points and return an updated static choice.
+
+    Explicit overrides remain fixed. Small workloads skip calibration when its
+    cost is unlikely to be recovered by the subsequent conversion.
+    """
+
     if not options.enabled:
         return choice, ()
     data_resources = {

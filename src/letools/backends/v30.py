@@ -1,3 +1,5 @@
+"""LeRobot v3 writer: size-grouped shards plus Parquet episode metadata."""
+
 from __future__ import annotations
 
 import copy
@@ -38,6 +40,8 @@ def _groups_by_size(items: list[Episode], sizes: list[float], limit: int) -> lis
 
 
 class LeRobotV30Backend(DatasetBackend):
+    """Pack format-neutral episodes into bounded v3 data and media shards."""
+
     version = "v3.0"
 
     def write(
@@ -47,6 +51,13 @@ class LeRobotV30Backend(DatasetBackend):
         config: ConversionConfig,
         recorder: StageRecorder,
     ) -> None:
+        """Write grouped payloads while calculating global and shard offsets.
+
+        Data grouping uses logical Arrow bytes, while media grouping uses source
+        input bytes. Episode rows are finalized only after both plans have
+        assigned their data ranges and per-camera timestamp ranges.
+        """
+
         metadata_started = time.perf_counter()
         info = copy.deepcopy(source.metadata.info)
         info["codebase_version"] = "v3.0"

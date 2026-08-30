@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Wrap the planner oracle with optional node-local source/destination copies."""
+
 from __future__ import annotations
 
 import json
@@ -11,6 +13,8 @@ from planner_oracle import build_parser, run
 
 
 def main() -> int:
+    """Prepare a storage topology outside timing, then execute the shared oracle."""
+
     parser = build_parser()
     parser.description = "Run a planner oracle with optional node-local source/destination"
     parser.add_argument("--local-source", action="store_true")

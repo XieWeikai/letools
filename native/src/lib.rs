@@ -1,3 +1,10 @@
+//! Coarse native primitives exposed to the Python conversion frontend.
+//!
+//! Every operation accepts owned paths and plain values, releases the GIL for
+//! the complete parallel/filesystem/FFmpeg lifecycle, and returns only values or
+//! errors. FFmpeg packet, frame, stream, and allocator objects never cross the
+//! Python ABI boundary.
+
 use pyo3::exceptions::PyOSError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -14,7 +21,10 @@ use sha2::{Digest, Sha256};
 use std::io::Write;
 
 #[pyfunction]
+/// Return file sizes in input order, performing independent stats in Rayon.
 fn file_sizes(py: Python<'_>, paths: Vec<PathBuf>) -> PyResult<Vec<u64>> {
+    // Detaching once around the complete parallel traversal avoids one GIL
+    // transition per path and lets Python worker threads continue independently.
     let result: Result<Vec<_>, String> = py.detach(|| {
         paths
             .par_iter()
@@ -29,6 +39,7 @@ fn file_sizes(py: Python<'_>, paths: Vec<PathBuf>) -> PyResult<Vec<u64>> {
 }
 
 #[pyfunction]
+/// Copy independent path pairs in parallel and return their byte counts.
 fn copy_files(py: Python<'_>, files: Vec<(PathBuf, PathBuf)>) -> PyResult<Vec<u64>> {
     let result: Result<Vec<_>, String> = py.detach(|| {
         files
@@ -48,6 +59,7 @@ fn copy_files(py: Python<'_>, files: Vec<(PathBuf, PathBuf)>) -> PyResult<Vec<u6
 }
 
 #[cfg(feature = "video")]
+/// Hash encoded video packet payloads assigned to ordered timestamp slices.
 fn digest_packets(path: &PathBuf, slices: &[(f64, f64)]) -> Result<Vec<String>, String> {
     if slices.is_empty() {
         return Ok(Vec::new());
@@ -90,6 +102,7 @@ fn digest_packets(path: &PathBuf, slices: &[(f64, f64)]) -> Result<Vec<String>, 
 }
 
 #[cfg(feature = "video")]
+/// Remux complete compatible inputs into one atomically published MP4.
 fn concat_videos(inputs: &[PathBuf], output: &PathBuf) -> Result<(), String> {
     if inputs.is_empty() {
         return Err("at least one input video is required".to_string());
@@ -149,6 +162,8 @@ fn concat_videos(inputs: &[PathBuf], output: &PathBuf) -> Result<(), String> {
             .map_err(|error| format!("add output stream: {error}"))?;
         target.set_parameters(stream.parameters());
         target.set_time_base(stream.time_base());
+        // Container-specific codec tags from the input may be invalid in the
+        // new MP4. Clearing the tag lets FFmpeg select the matching output tag.
         unsafe {
             (*target.parameters().as_mut_ptr()).codec_tag = 0;
         }
@@ -186,6 +201,7 @@ fn concat_videos(inputs: &[PathBuf], output: &PathBuf) -> Result<(), String> {
 }
 
 #[cfg(feature = "video")]
+/// One active split container and the state required to rebase its packets.
 struct SplitOutput {
     context: ffmpeg::format::context::Output,
     temporary: tempfile::TempPath,
@@ -196,6 +212,7 @@ struct SplitOutput {
 }
 
 #[cfg(feature = "video")]
+/// Create an unpublished slice output and copy compatible stream parameters.
 fn open_split_output(
     target: &Path,
     start: f64,
@@ -242,6 +259,7 @@ fn open_split_output(
 }
 
 #[cfg(feature = "video")]
+/// Finalize and atomically persist one completed split output.
 fn close_split_output(mut output: SplitOutput) -> Result<(), String> {
     output
         .context
@@ -256,6 +274,7 @@ fn close_split_output(mut output: SplitOutput) -> Result<(), String> {
 }
 
 #[cfg(feature = "video")]
+/// Demux one source pass and route ordered time ranges into separate MP4 files.
 fn split_video_slices(source: &PathBuf, outputs: &[(f64, f64, PathBuf)]) -> Result<(), String> {
     if outputs.is_empty() {
         return Ok(());
@@ -341,6 +360,8 @@ fn split_video_slices(source: &PathBuf, outputs: &[(f64, f64, PathBuf)]) -> Resu
             continue;
         }
         if let Some(pts) = packet.pts() {
+            // Each v2.1 episode starts at zero even when its packets came from a
+            // later timestamp in a grouped v3 shard.
             packet.set_pts(Some(pts - output.timestamp_offsets[input_index]));
         }
         packet.set_dts(
@@ -365,6 +386,7 @@ fn split_video_slices(source: &PathBuf, outputs: &[(f64, f64, PathBuf)]) -> Resu
 
 #[cfg(feature = "video")]
 #[pyfunction]
+/// Python entry point for packet payload digests; owns the full detached job.
 fn packet_digests(py: Python<'_>, path: PathBuf, slices: Vec<(f64, f64)>) -> PyResult<Vec<String>> {
     py.detach(|| digest_packets(&path, &slices))
         .map_err(PyOSError::new_err)
@@ -372,6 +394,7 @@ fn packet_digests(py: Python<'_>, path: PathBuf, slices: Vec<(f64, f64)>) -> PyR
 
 #[cfg(feature = "video")]
 #[pyfunction]
+/// Python entry point for packet-preserving whole-file concatenation.
 fn concatenate_videos(py: Python<'_>, inputs: Vec<PathBuf>, output: PathBuf) -> PyResult<()> {
     py.detach(|| concat_videos(&inputs, &output))
         .map_err(PyOSError::new_err)
@@ -379,12 +402,14 @@ fn concatenate_videos(py: Python<'_>, inputs: Vec<PathBuf>, output: PathBuf) -> 
 
 #[cfg(feature = "video")]
 #[pyfunction]
+/// Python entry point for a one-pass, packet-preserving split operation.
 fn split_video(py: Python<'_>, source: PathBuf, outputs: Vec<(f64, f64, PathBuf)>) -> PyResult<()> {
     py.detach(|| split_video_slices(&source, &outputs))
         .map_err(PyOSError::new_err)
 }
 
 #[pyfunction]
+/// Report extension version and compile-time capabilities for diagnostics.
 fn build_info() -> (&'static str, Vec<&'static str>) {
     let capabilities = vec!["filesystem"];
     #[cfg(feature = "video")]
@@ -399,6 +424,7 @@ fn build_info() -> (&'static str, Vec<&'static str>) {
 }
 
 #[pymodule]
+/// Native module exports; video symbols exist only in FFmpeg-enabled wheels.
 mod letools_native {
     #[pymodule_export]
     use super::{build_info, copy_files, file_sizes};
