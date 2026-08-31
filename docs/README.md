@@ -17,6 +17,8 @@ performance evidence:
   real-data correctness, official-loader evidence, and regression results.
 - [HDF5 mapping presets](HDF5_PRESETS.md): interactive authoring, user/project
   storage, CLI conversion, JSON schema, and supported source representations.
+- [AgileX source acceptance](AGILEX.md): raw directory contract, synchronization,
+  instruction semantics, real-data correctness, throughput, and five-iteration audit.
 - [Current benchmark](../BENCHMARK.md): full-dataset conversion, round-trip,
   comparison throughput, resource use, and correctness results.
 - [Self-improvement protocol](../self-improve/PROTOCOL.md): the required process

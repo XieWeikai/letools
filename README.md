@@ -18,6 +18,7 @@ Detailed documentation:
 - [Static planner design](docs/PLANNER.md)
 - [HDF5 source MVP acceptance](docs/HDF5_MVP.md)
 - [HDF5 mapping presets](docs/HDF5_PRESETS.md)
+- [AgileX source acceptance](docs/AGILEX.md)
 - [Documentation index](docs/README.md)
 
 ## Quick start

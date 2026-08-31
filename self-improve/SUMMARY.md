@@ -129,8 +129,7 @@ writing about 39 GiB, leaving I/O wait rather than a Python hot loop.
 - Rust-split validated v2.1: `/jfs/tmp/letools/si-0019-c1`
 - Rust-split v3.0 roundtrip: `/jfs/tmp/letools/si-0019-roundtrip-v30`
 
-The governing process is
-`/workspace/shrelic/letools/self-improve/PROTOCOL.md`; future optimization
-cycles should continue numbering from iteration 0021 and use final `main` as
-their baseline. All drafts, profiles, diffs, and reports are rooted at
-`/workspace/shrelic/letools/self-improve/`.
+The governing process is [PROTOCOL.md](PROTOCOL.md). Future optimization cycles
+should continue numbering from iteration 0046 and use the current accepted
+`main` tip as their baseline. Drafts, profiles, diffs, and reports remain under
+the ignored `self-improve/` workspace.
