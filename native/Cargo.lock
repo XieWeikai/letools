@@ -237,9 +237,10 @@ dependencies = [
 
 [[package]]
 name = "letools-native"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ffmpeg-next",
+ "libc",
  "pyo3",
  "rayon",
  "sha2",

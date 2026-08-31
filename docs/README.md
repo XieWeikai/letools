@@ -11,6 +11,8 @@ performance evidence:
   two-stage CLI parsing, data flow, native acceleration, and extension points.
 - [Static planner](PLANNER.md): planner scope, resource and I/O inputs,
   heuristic selection, bounded calibration, fingerprints, and cache behavior.
+- [Specialized merge engine](MERGE.md): fixed same-version scope, physical data
+  path, autotune, CLI/API, correctness rules, and Slurm acceptance evidence.
 - [Planner benchmark](PLANNER_BENCHMARK.md): the Slurm oracle matrix and
   acceptance measurements for the current planner.
 - [HDF5 source MVP](HDF5_MVP.md): implemented scope, full XVLA throughput,

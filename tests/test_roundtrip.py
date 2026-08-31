@@ -6,9 +6,17 @@ from pathlib import Path
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
-from letools import ConversionConfig, compare_datasets, convert, validate_dataset
-from letools._native import file_sizes
+from letools import (
+    ConversionConfig,
+    compare_datasets,
+    convert,
+    merge_datasets,
+    open_dataset,
+    validate_dataset,
+)
+from letools._native import clone_or_copy_files, file_sizes
 
 
 def _stats(values: np.ndarray) -> dict[str, list[float] | list[int]]:
@@ -138,3 +146,60 @@ def test_file_sizes(tmp_path: Path) -> None:
     first.write_bytes(b"abc")
     second.write_bytes(b"12345")
     assert file_sizes([first, second]) == [3, 5]
+
+    first_copy = tmp_path / "copies/first"
+    second_copy = tmp_path / "copies/second"
+    results = clone_or_copy_files(
+        [(first, first_copy), (second, second_copy)], workers=2
+    )
+    assert [size for size, _ in results] == [3, 5]
+    assert first_copy.read_bytes() == b"abc"
+    assert second_copy.read_bytes() == b"12345"
+    with pytest.raises(ValueError, match="positive"):
+        clone_or_copy_files([], workers=0)
+
+
+def _assert_merged_data(first: Path, second: Path, merged: Path) -> None:
+    inputs = (open_dataset(first), open_dataset(second))
+    output = open_dataset(merged)
+    expected = [(source, episode) for source in inputs for episode in source.episodes]
+    assert len(output.episodes) == len(expected)
+    global_index = 0
+    for index, ((source, episode), actual_episode) in enumerate(
+        zip(expected, output.episodes, strict=True)
+    ):
+        actual = output.read_episode(actual_episode)
+        original = source.read_episode(episode)
+        for column in original.column_names:
+            if column not in {"episode_index", "index", "task_index"}:
+                assert actual[column].equals(original[column])
+        assert set(actual["episode_index"].to_pylist()) == {index}
+        assert actual["index"].to_pylist() == list(
+            range(global_index, global_index + episode.length)
+        )
+        global_index += episode.length
+
+
+def test_same_version_merge_v21_and_v30(tmp_path: Path) -> None:
+    first_v21 = make_v21(tmp_path / "first-v21")
+    second_v21 = make_v21(tmp_path / "second-v21")
+    merged_v21 = tmp_path / "merged-v21"
+    result_v21 = merge_datasets(
+        [first_v21, second_v21], merged_v21, data_workers=2, file_workers=1
+    )
+    assert (result_v21.episodes, result_v21.frames) == (6, 18)
+    assert validate_dataset(merged_v21, deep=True).valid
+    _assert_merged_data(first_v21, second_v21, merged_v21)
+
+    first_v30 = tmp_path / "first-v30"
+    second_v30 = tmp_path / "second-v30"
+    config = ConversionConfig(workers=2)
+    convert(first_v21, first_v30, "v3.0", config=config)
+    convert(second_v21, second_v30, "v3.0", config=config)
+    merged_v30 = tmp_path / "merged-v30"
+    result_v30 = merge_datasets(
+        [first_v30, second_v30], merged_v30, data_workers=2, file_workers=1
+    )
+    assert (result_v30.episodes, result_v30.frames) == (6, 18)
+    assert validate_dataset(merged_v30, deep=True).valid
+    _assert_merged_data(first_v30, second_v30, merged_v30)

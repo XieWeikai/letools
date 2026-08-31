@@ -17,6 +17,7 @@ The implemented product boundary is intentionally narrow:
 - accept a custom `DatasetSource` through the Python API;
 - validate one dataset and compare two datasets semantically;
 - choose a static conversion configuration before execution;
+- merge multiple physical same-version LeRobot datasets through a specialized path;
 - report environment capabilities and conversion stage timings.
 
 It is not a training, robot-control, dataset-upload, distributed-conversion, or
@@ -82,6 +83,10 @@ model and reusable primitives. The shared model never depends on a physical
 LeRobot version. The planner produces `ConversionConfig`; it does not call
 backend internals or change dataset semantics.
 
+The merge engine is intentionally outside this diagram's conversion pipeline.
+Its permanently fixed LeRobot-to-same-LeRobot contract does not benefit from
+source plugins or generic backends and can exploit physical file identity.
+
 ## 3. Shared data model
 
 The objects in `src/letools/model.py` are the contract between readers and
@@ -138,6 +143,8 @@ because h5py serializes HDF5 C API calls inside one process.
 | `source_providers/{lerobot,hdf5,agilex}.py` | Provider-specific arguments, immutable config, and source construction | Episode reads, planning, or target writing |
 | `conversion.py` | Version dispatch, staging, validation gate, publication, stage lifecycle | File-layout details, worker selection |
 | `conversion_types.py` | Explicit execution configuration and result types | Resource discovery or heuristics |
+| `merge.py` | Same-version manifest, compatibility, autotune, streaming rewrites, metadata, publication | New source formats or version conversion |
+| `merge_types.py` | Immutable merge plans, contributions, and results | Execution or storage inspection |
 | `model.py` | Version-neutral dataset and episode contracts | Filesystem parsing or output layout |
 | `plugins/base.py` | `DatasetSource` read protocol | Target writing |
 | `plugins/lerobot.py` | v2.1/v3.0 metadata parsing and logical slicing | Target writing and concurrency policy |
@@ -289,7 +296,47 @@ Stage metrics contain elapsed seconds and optional task/input/output counts.
 They diagnose internal phase costs; external wall time remains the authoritative
 end-to-end benchmark because it also includes process startup and serialization.
 
-## 9. v2.1 to v3.0 pipeline
+## 9. Specialized same-version merge engine
+
+```text
+physical LeRobot roots
+       |
+       v
+strict manifest + episode/frame/task maps
+       |
+       +-- real bounded calibration -> immutable MergePlan + cache
+       |
+       +-- Parquet RecordBatch stream -> replace 3 system columns -> Parquet
+       |
+       +-- complete MP4 paths -> Rust bounded reflink-or-copy pool
+       |
+       v
+metadata rebuild -> deep validation -> atomic publication
+```
+
+Merge supports only v2.1-to-v2.1 and v3.0-to-v3.0 concatenation. It does not
+instantiate `SourceProvider`, call a conversion backend, remux MP4 packets, or
+create an intermediate dataset. This duplication of a small amount of layout
+logic is deliberate: the narrow operation can preserve v3 shard boundaries and
+copy media as complete files, while conversion must handle arbitrary logical
+sources and target grouping.
+
+Python owns manifest semantics, PyArrow streaming, calibration, metadata, and
+the transaction. Rust receives the complete list of media path pairs once,
+releases the GIL, creates an explicitly bounded Rayon pool, tries Linux
+`FICLONE`, and falls back to `std::fs::copy`. No FFmpeg library participates.
+
+Only `episode_index`, global `index`, and `task_index` are replaced in Arrow
+batches. All feature arrays remain Arrow-native. `parquet_batch_rows` and a
+half-allocation memory budget bound in-flight decoded data. v2.1 emits one data
+and media path per output episode. v3.0 preserves each input data/video resource
+as one output resource and rewrites episode resource references and global
+offsets.
+
+The merge planner is separate from `planner/*`. It has no runtime controller and
+never changes a plan after publication begins. See [MERGE.md](MERGE.md).
+
+## 10. v2.1 to v3.0 pipeline
 
 ```text
 v2.1 JSON/JSONL metadata + per-episode files
@@ -309,7 +356,7 @@ are preserved while valid MP4 container metadata and timestamps may differ.
 `data_file_size_mb` and `video_file_size_mb` influence group boundaries and
 therefore only have target-layout meaning for v3 output.
 
-## 10. v3.0 to v2.1 pipeline
+## 11. v3.0 to v2.1 pipeline
 
 ```text
 v3 Parquet metadata + grouped data/video shards
@@ -327,7 +374,7 @@ Grouping by shared input avoids reopening a v3 shard once for every contained
 episode. v2.1 path fan-out is controlled by `chunks_size`; v3 target-size
 parameters are absent for this direction.
 
-## 11. HDF5 to LeRobot pipeline
+## 12. HDF5 to LeRobot pipeline
 
 ```text
 explicit HDF5Mapping + one HDF5 file per episode
@@ -364,7 +411,7 @@ a portable JSON preset. Loading a preset is a pure adapter from JSON to
 metadata layout remains owned by the backend. Consequently, the authoring tool
 is outside timed conversion stages and adds no per-frame or per-episode overhead.
 
-## 12. AgileX to LeRobot pipeline
+## 13. AgileX to LeRobot pipeline
 
 ```text
 episode directories with timestamped JSON and JPEG files
@@ -391,7 +438,7 @@ until media execution. The default MJPEG target path muxes original JPEG packet
 payloads without pixel decode; an explicitly selected compact codec uses the
 shared PyAV decode/encode path.
 
-## 13. Planner interaction
+## 14. Planner interaction
 
 The planner is optional and sits before the coordinator:
 
@@ -410,7 +457,7 @@ the same planner and then calls `convert()`. A cache hit skips bounded
 calibration, not source/dataset/storage inspection. See [PLANNER.md](PLANNER.md)
 for exact rules and limitations.
 
-## 14. Native acceleration boundary
+## 15. Native acceleration boundary
 
 `_native.py` performs capability-based dispatch. Filesystem operations have a
 portable Python implementation. Video concat, split, and packet digests use
@@ -454,7 +501,7 @@ dataset staging tree. V3 writes its larger grouped shards directly into that
 tree and removes a partial shard on failure. In both cases the conversion
 coordinator remains the only dataset publication boundary.
 
-## 15. Validation boundary
+## 16. Validation boundary
 
 Conversion's built-in gate is shallow validation: metadata totals, contiguous
 episode indices, referenced files, Parquet row counts, and basic schema-shape
@@ -467,7 +514,7 @@ comparison hashes encoded packet payloads per episode and camera. It does not
 require byte-identical Parquet files or MP4 containers because both formats
 permit semantically equivalent physical layouts.
 
-## 16. Extension rules
+## 17. Extension rules
 
 When adding a source format, prefer a new `DatasetSource` that maps it into the
 existing model. Do not teach both LeRobot backends how to parse that format.
@@ -492,7 +539,7 @@ Any performance change must preserve deep validation and bidirectional semantic
 comparison. Follow the [self-improvement protocol](../self-improve/PROTOCOL.md)
 for profiling, resource accounting, acceptance, and reporting.
 
-## 17. Code documentation conventions
+## 18. Code documentation conventions
 
 Every production Python module states its ownership boundary in a module
 docstring. Public classes, functions, abstract methods, plugin capabilities, and

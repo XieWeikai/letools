@@ -45,6 +45,7 @@ The system executable is informational and is not required for conversion.
 ```text
 letools convert SOURCE DESTINATION --to VERSION [options]
 letools plan SOURCE DESTINATION --to VERSION [options]
+letools merge SOURCE... --output DESTINATION [options]
 letools validate DATASET [--deep]
 letools compare LEFT RIGHT [--skip-data] [--videos]
 letools doctor
@@ -192,7 +193,56 @@ Redirect JSON when retaining a run record:
 letools convert SOURCE DESTINATION --to v3.0 --auto > conversion.json
 ```
 
-## 4. Inspect a plan without converting
+## 4. Merge same-version LeRobot datasets
+
+Merge two or more v2.1 datasets into v2.1, or two or more v3.0 datasets into
+v3.0. Mixed versions and output-version conversion are intentionally rejected:
+
+```bash
+letools merge /data/part-00-v30 /data/part-01-v30 \
+  --output /data/complete-v30 \
+  --auto
+```
+
+Input order is semantic: every episode from the first source appears before
+every episode from the second source. Tasks are deduplicated by task text.
+Episode, global frame, and task indices are rewritten; frame indices,
+timestamps, feature values, episode task strings, and encoded packet payloads
+are retained.
+
+Merge auto planning is independent from conversion planning. On a cache miss it
+measures representative real Parquet rewrites and whole-file copy operations in
+a temporary directory beside the destination. Candidate concurrency is bounded
+by process/Slurm/cgroup CPUs, half the effective memory, 16 workers per phase,
+the number of physical resources, 10 seconds, and 1024 MiB by default. Data and
+file phases are sequential, so their worker counts do not add together.
+
+```bash
+# Calibrate and print a plan without publishing output.
+letools merge PART_A PART_B --output COMBINED --plan-only --auto
+
+# Fixed execution for reproducible benchmarking.
+letools merge PART_A PART_B --output COMBINED \
+  --data-workers 8 --file-workers 4
+```
+
+Plans are cached under `~/.cache/letools/merge-plans/` using a fingerprint of
+algorithm version, CPU/memory limits, source and destination storage, format,
+and complete data/media size distributions. `--no-cache` forces independent
+calibration. Delete that directory to clear all merge plans.
+
+Merge always stages a complete sibling directory. Built-in validation is deep,
+including every Parquet episode and video duration; `--no-validate` is intended
+for controlled performance experiments. `--overwrite` removes an old output
+only after the staged merge validates. Source and destination directories may
+not contain one another.
+
+The Python entry points are `merge_datasets()` and `plan_merge()`. Their results
+include contributions per source, selected workers, calibration evidence,
+logical copied bytes, clone/copy counts, wall time, and stage metrics. Exact
+rules and measured acceptance are in [MERGE.md](MERGE.md).
+
+## 5. Inspect a plan without converting
 
 Without `--calibrate`, plan mode performs read-only profiling of resources,
 dataset shape, and both storage paths, then prints a static plan:
@@ -267,7 +317,7 @@ rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/letools/planner-v1"
 Deleting the directory does not affect datasets; it is recreated after a later
 calibration that produces measurements.
 
-## 5. Validate a dataset
+## 6. Validate a dataset
 
 Shallow validation checks metadata totals, contiguous episode indices,
 referenced file existence, Parquet row counts, and basic feature-shape
@@ -293,7 +343,7 @@ the standalone `validate` command.
 Validation reports distinguish `errors` from `warnings`. `valid` is false only
 when errors exist.
 
-## 6. Compare datasets semantically
+## 7. Compare datasets semantically
 
 Compare metadata, tasks, normalized feature schemas, episode statistics, and
 all Arrow values:
@@ -326,7 +376,7 @@ letools validate /data/converted --deep
 letools compare /data/original /data/converted --videos
 ```
 
-## 7. Run under Slurm
+## 8. Run under Slurm
 
 Plan and convert inside the allocation whose resources should be detected.
 Running `plan` on a login node and converting inside Slurm produces a different
@@ -355,7 +405,7 @@ cgroup cpusets, and Slurm. It similarly respects host, cgroup, and Slurm memory
 limits. Request resources from Slurm first; the planner never submits jobs or
 changes the allocation.
 
-## 8. Python API
+## 9. Python API
 
 ### Fixed conversion
 
@@ -466,7 +516,7 @@ if not comparison.equal:
     raise RuntimeError(comparison.errors)
 ```
 
-## 9. Convert HDF5 with a mapping preset
+## 10. Convert HDF5 with a mapping preset
 
 HDF5 has no universal robotics schema. The built-in source therefore requires a
 mapping. Create it interactively from a representative episode:
@@ -577,7 +627,7 @@ the source class and a SHA-256 of the complete mapping, so two semantic mappings
 cannot share a calibrated plan. The CLI constructs the same object from the
 selected preset before planning.
 
-## 10. Convert an AgileX directory
+## 11. Convert an AgileX directory
 
 The built-in AgileX source expects `episodeN` directories with these streams:
 
@@ -652,7 +702,7 @@ decoding and re-encoding and is the baseline performance mode, but output size
 is close to the source JPEG payload. Python callers can select a compact lossy
 codec with `ConversionConfig.video_encoding`.
 
-## 11. Custom source plugins and providers
+## 12. Custom source plugins and providers
 
 A custom input format can reuse both built-in output backends by implementing
 `DatasetSource`. No file registration is required when using the Python API:
@@ -735,7 +785,7 @@ it returns the common `DatasetSource` interface. The installed `letools` command
 currently registers built-ins in code and does not discover package entry
 points.
 
-## 12. Development setup
+## 13. Development setup
 
 Install test and native development groups:
 
@@ -770,7 +820,7 @@ uv run maturin develop \
 Normal users should not set these variables. Release wheels carry their own
 runtime dependencies and relative rpaths.
 
-## 13. Common failures
+## 14. Common failures
 
 ### `letools: command not found`
 

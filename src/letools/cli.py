@@ -11,6 +11,7 @@ from typing import Any
 
 from letools.conversion import ConversionConfig, convert
 from letools.doctor import environment_report
+from letools.merge import merge_datasets, plan_merge
 from letools.planner import (
     CalibrationOptions,
     PerformanceOverrides,
@@ -110,6 +111,20 @@ def build_parser(
     comparison.add_argument("right", type=Path)
     comparison.add_argument("--skip-data", action="store_true")
     comparison.add_argument("--videos", action="store_true")
+    merging = commands.add_parser(
+        "merge", help="Merge same-version physical LeRobot datasets"
+    )
+    merging.add_argument("sources", nargs="+", type=Path)
+    merging.add_argument("--output", required=True, type=Path)
+    merging.add_argument("--data-workers", type=int)
+    merging.add_argument("--file-workers", type=int)
+    merging.add_argument("--auto", action="store_true")
+    merging.add_argument("--plan-only", action="store_true")
+    merging.add_argument("--calibration-seconds", type=float, default=10.0)
+    merging.add_argument("--calibration-mb", type=int, default=1024)
+    merging.add_argument("--no-cache", action="store_true")
+    merging.add_argument("--overwrite", action="store_true")
+    merging.add_argument("--no-validate", action="store_true")
     commands.add_parser("doctor", help="Report native and FFmpeg providers")
     utilities = commands.add_parser("tools", help="Run auxiliary dataset utilities")
     utility_commands = utilities.add_subparsers(dest="tool", required=True)
@@ -253,6 +268,36 @@ def main(argv: list[str] | None = None) -> int:
         report = validate_dataset(args.dataset, deep=args.deep)
         _print(report)
         return 0 if report.valid else 1
+    if args.command == "merge":
+        if args.plan_only:
+            _print(
+                plan_merge(
+                    args.sources,
+                    args.output,
+                    data_workers=args.data_workers,
+                    file_workers=args.file_workers,
+                    calibrate=args.auto,
+                    calibration_seconds=args.calibration_seconds,
+                    calibration_bytes=args.calibration_mb * 1024**2,
+                    use_cache=not args.no_cache,
+                )
+            )
+            return 0
+        _print(
+            merge_datasets(
+                args.sources,
+                args.output,
+                auto=args.auto,
+                data_workers=args.data_workers,
+                file_workers=args.file_workers,
+                overwrite=args.overwrite,
+                validate=not args.no_validate,
+                use_cache=not args.no_cache,
+                calibration_seconds=args.calibration_seconds,
+                calibration_bytes=args.calibration_mb * 1024**2,
+            )
+        )
+        return 0
     if args.command == "doctor":
         print(json.dumps(environment_report(), indent=2))
         return 0

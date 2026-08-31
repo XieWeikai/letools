@@ -9,9 +9,13 @@ use pyo3::exceptions::PyOSError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::fs;
+use std::fs::File;
 #[cfg(feature = "video")]
 use std::path::Path;
 use std::path::PathBuf;
+
+#[cfg(target_os = "linux")]
+use std::os::fd::AsRawFd;
 
 #[cfg(feature = "video")]
 use ffmpeg_next as ffmpeg;
@@ -54,6 +58,64 @@ fn copy_files(py: Python<'_>, files: Vec<(PathBuf, PathBuf)>) -> PyResult<Vec<u6
                 })
             })
             .collect()
+    });
+    result.map_err(PyOSError::new_err)
+}
+
+/// Clone one file when the filesystem supports copy-on-write, otherwise copy it.
+fn clone_or_copy(source: &PathBuf, destination: &PathBuf) -> Result<(u64, bool), String> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| format!("{} has no parent", destination.display()))?;
+    fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+
+    #[cfg(target_os = "linux")]
+    {
+        const FICLONE: libc::c_ulong = 0x4004_9409;
+        let input = File::open(source).map_err(|error| format!("{}: {error}", source.display()))?;
+        let output = File::create(destination)
+            .map_err(|error| format!("{}: {error}", destination.display()))?;
+        // SAFETY: FICLONE receives two valid file descriptors owned by this
+        // scope. A failed ioctl leaves only the newly created destination,
+        // which is removed before falling back to a normal copy.
+        let cloned = unsafe { libc::ioctl(output.as_raw_fd(), FICLONE, input.as_raw_fd()) } == 0;
+        if cloned {
+            return input
+                .metadata()
+                .map(|metadata| (metadata.len(), true))
+                .map_err(|error| format!("{}: {error}", source.display()));
+        }
+        drop(output);
+        fs::remove_file(destination)
+            .map_err(|error| format!("{}: {error}", destination.display()))?;
+    }
+
+    fs::copy(source, destination)
+        .map(|bytes| (bytes, false))
+        .map_err(|error| format!("{} -> {}: {error}", source.display(), destination.display()))
+}
+
+#[pyfunction]
+/// Clone or copy independent files in a dedicated, explicitly bounded pool.
+fn clone_or_copy_files(
+    py: Python<'_>,
+    files: Vec<(PathBuf, PathBuf)>,
+    workers: usize,
+) -> PyResult<Vec<(u64, bool)>> {
+    if workers == 0 {
+        return Err(PyOSError::new_err("copy worker count must be positive"));
+    }
+    let result: Result<Vec<_>, String> = py.detach(|| {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(workers.min(files.len().max(1)))
+            .build()
+            .map_err(|error| format!("build copy worker pool: {error}"))?;
+        pool.install(|| {
+            files
+                .par_iter()
+                .map(|(source, destination)| clone_or_copy(source, destination))
+                .collect()
+        })
     });
     result.map_err(PyOSError::new_err)
 }
@@ -411,7 +473,7 @@ fn split_video(py: Python<'_>, source: PathBuf, outputs: Vec<(f64, f64, PathBuf)
 #[pyfunction]
 /// Report extension version and compile-time capabilities for diagnostics.
 fn build_info() -> (&'static str, Vec<&'static str>) {
-    let capabilities = vec!["filesystem"];
+    let capabilities = vec!["filesystem", "clone-or-copy"];
     #[cfg(feature = "video")]
     let capabilities = {
         let mut capabilities = capabilities;
@@ -427,7 +489,7 @@ fn build_info() -> (&'static str, Vec<&'static str>) {
 /// Native module exports; video symbols exist only in FFmpeg-enabled wheels.
 mod letools_native {
     #[pymodule_export]
-    use super::{build_info, copy_files, file_sizes};
+    use super::{build_info, clone_or_copy_files, copy_files, file_sizes};
 
     #[cfg(feature = "video")]
     #[pymodule_export]

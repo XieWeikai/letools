@@ -4,7 +4,8 @@
 [LeRobot](https://github.com/huggingface/lerobot) datasets. The current release
 supports lossless semantic conversion in both directions between LeRobot v2.1
 and v3.0, explicit mapping-driven HDF5 export, and timestamp-aligned AgileX
-directory export to either LeRobot version.
+directory export to either LeRobot version. It also has a specialized high-speed
+engine for merging multiple same-version LeRobot datasets.
 
 The public API consistently uses LeRobot's `episode` terminology. Python owns
 the plugin API and conversion plan; native Rust primitives accelerate work that
@@ -16,6 +17,7 @@ Detailed documentation:
 - [Installation and direct command setup](docs/INSTALLATION.md)
 - [Architecture and module boundaries](docs/ARCHITECTURE.md)
 - [Static planner design](docs/PLANNER.md)
+- [Specialized merge engine](docs/MERGE.md)
 - [HDF5 source MVP acceptance](docs/HDF5_MVP.md)
 - [HDF5 mapping presets](docs/HDF5_PRESETS.md)
 - [AgileX source acceptance](docs/AGILEX.md)
@@ -142,6 +144,47 @@ after success. Existing destinations are not replaced unless `--overwrite` is
 provided. Without `--auto`, explicit worker values or fixed defaults are used.
 The two file-size controls do not apply to v2.1 output.
 
+### Merge
+
+Merge two or more physical datasets of the same LeRobot version:
+
+```bash
+letools merge /data/part-a-v30 /data/part-b-v30 \
+  --output /data/combined-v30 --auto
+```
+
+The supported combinations are exclusively v2.1 + v2.1 -> v2.1 and
+v3.0 + v3.0 -> v3.0. Input order determines output episode order. Merge is a
+specialized path: it streams Parquet while rewriting only `episode_index`,
+global `index`, and `task_index`, and clones or copies complete video files
+without FFmpeg. It never creates an intermediate converted dataset.
+
+```bash
+# Inspect or calibrate without publishing the destination.
+letools merge PART_A PART_B --output COMBINED --plan-only --auto
+
+# Reproduce a fixed plan.
+letools merge PART_A PART_B --output COMBINED \
+  --data-workers 16 --file-workers 1
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--output PATH` | Required destination |
+| `--auto` | Run bounded real-work calibration on a cache miss |
+| `--plan-only` | Print the plan without merging |
+| `--data-workers N` | Fixed concurrent Parquet resources |
+| `--file-workers N` | Fixed concurrent whole-file media operations |
+| `--calibration-seconds N` | Calibration wall budget; default 10 seconds |
+| `--calibration-mb N` | Aggregate calibration I/O budget; default 1024 MiB |
+| `--no-cache` | Ignore and do not write the merge-plan cache |
+| `--overwrite` | Transactionally replace an existing destination |
+| `--no-validate` | Skip built-in deep validation |
+
+Inputs must agree on version, FPS, robot type, features, video keys, and one
+full-dataset split. Tasks are deduplicated by text and frame task indices are
+remapped. See [the merge design and acceptance report](docs/MERGE.md).
+
 ### Plan
 
 ```text
@@ -239,7 +282,7 @@ sbatch --cpus-per-task=8 --mem=48G --wrap \
 ## Python API
 
 ```python
-from letools import ConversionConfig, convert
+from letools import ConversionConfig, convert, merge_datasets
 
 result = convert(
     "/data/dataset-v21",
@@ -248,6 +291,13 @@ result = convert(
     config=ConversionConfig(workers=8, video_workers=3),
 )
 print(result)
+
+merged = merge_datasets(
+    ["/data/part-a-v30", "/data/part-b-v30"],
+    "/data/combined-v30",
+    auto=True,
+)
+print(merged.plan)
 ```
 
 The public API also exports `plan_conversion()`, `plan_and_convert()`,
@@ -279,6 +329,13 @@ SourceProvider -> typed config        |
                                                 |                               |
                                          portable PyAV                    letools-native
                                          implementation                  Rust acceleration
+
+Same-version LeRobot paths -> specialized merge manifest
+                                      |
+                        streaming Parquet index rewrite
+                        + bounded Rust clone/copy pool
+                                      |
+                         deep validation + publish
 ```
 
 Source providers own CLI option registration, typed configuration, and source
@@ -304,6 +361,11 @@ Reusable primitives live in `src/letools/_arrow.py`, `_video.py`, `_stats.py`,
 and `_native.py`. The self-improvement protocol deliberately keeps performance
 complexity inside these primitives and backends rather than leaking it into the
 plugin API.
+
+Merge deliberately does not use the plugin/backend path. Its permanently narrow
+same-version contract enables whole-file video copying and direct physical-layout
+rewrites. This separation also guarantees that merge development cannot regress
+conversion dispatch or third-party source behavior.
 
 The Rust boundary is deliberately coarse. Python passes paths and episode time
 ranges once per file; Rust owns open/demux/remux/hash/trailer/close and releases

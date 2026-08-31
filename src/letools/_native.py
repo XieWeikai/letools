@@ -73,6 +73,28 @@ def copy_files(files: Sequence[tuple[Path, Path]]) -> list[int]:
     return sizes
 
 
+def clone_or_copy_files(
+    files: Sequence[tuple[Path, Path]], workers: int
+) -> list[tuple[int, bool]]:
+    """Clone files when possible, otherwise copy them with bounded concurrency."""
+
+    if workers <= 0:
+        raise ValueError("Copy worker count must be positive")
+    if _native is not None and hasattr(_native, "clone_or_copy_files"):
+        return _native.clone_or_copy_files(list(files), workers)
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    def copy_one(item: tuple[Path, Path]) -> tuple[int, bool]:
+        source, destination = item
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        return destination.stat().st_size, False
+
+    with ThreadPoolExecutor(max_workers=min(workers, len(files) or 1)) as pool:
+        return list(pool.map(copy_one, files))
+
+
 def packet_digests(path: Path, slices: Sequence[tuple[float, float]]) -> list[str]:
     """Hash encoded video packet payloads for ordered timestamp slices."""
 
