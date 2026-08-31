@@ -50,7 +50,7 @@ The console entry point comes from `[project.scripts]` in `pyproject.toml`:
 letools = "letools.cli:main"
 ```
 
-This is why `letools ...` works from any directory. `letools ...` is only
+This is why `letools ...` works from any directory. `uv run letools ...` is only
 needed when deliberately running the project-local `.venv` without installing a
 user command.
 

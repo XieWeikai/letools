@@ -27,16 +27,19 @@ mapped numeric vectors, and one JPEG camera. The suite checks:
 - numeric/stat/task equality between both targets;
 - complete video decode and batched frame reads.
 
-The complete Python suite at commit `54c7631` reports 19 passed tests. The Rust
-suite and Clippy with warnings denied also pass.
-
-The subsequent preset/TUI layer adds JSON round-trip, representative HDF5
+The initial implementation at commit `54c7631` reported 19 passing Python
+tests. The subsequent preset/TUI layer adds JSON round-trip, representative HDF5
 inspection, scripted terminal interaction, stored-preset selection, CLI parsing,
 and an end-to-end preset-driven HDF5 to v3 conversion with deep validation.
 Slurm job 784 ran the complete suite with 4 CPUs and 8 GiB and reported 23
 passed tests. The authoring and lookup layer is outside backend execution, and
 the conversion coordinator, backends, Arrow primitives, and video primitives
 are unchanged.
+
+The release integration suite reports 28 passing Python tests. It additionally
+checks direct JPEG packet muxing, buffer-backed HDF5 frame batches, bounded
+streaming metadata caches, target-specific output placement, and safe spawned
+media processes. Rust tests and Clippy with warnings denied also pass.
 
 ## Real HDF5 smoke test
 
@@ -85,6 +88,12 @@ median CPU seconds from 61.33 to 85.36 for v2.1 and from 36.34 to 58.82 for
 v3.0, both proportionally below throughput. Slurm step MaxRSS stayed near the
 same 21.7 GiB accounting value. Deep validation, complete Arrow/statistics and
 324-video packet comparisons, and official v3 loader samples passed.
+
+Five subsequent iterations tested larger frame batches, larger v3 video shards,
+direct v2.1 JuiceFS output, process-local HDF5 handle caching, and coarser process
+dispatch. None met the cross-target acceptance policy, so the table above is the
+final accepted implementation and throughput. Their reports are retained under
+the ignored `self-improve/iterations/0036` through `0040` archive directories.
 
 ## Existing conversion regression
 

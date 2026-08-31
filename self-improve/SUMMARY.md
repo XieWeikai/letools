@@ -2,13 +2,11 @@
 
 Status: complete
 
-Eleven accepted optimizations are present on `/workspace/shrelic/letools/main`.
-All conversions and full comparisons ran as single-node Slurm jobs within the
-protocol resource ceiling.
-
-Six additional HDF5-source optimizations are accepted on
-`feat/hdf5-source-mvp`; that feature campaign is intentionally not merged to
-`main` yet.
+Seventeen accepted optimizations are present on `/workspace/shrelic/letools/main`,
+including the six accepted HDF5-source optimizations. All conversions and full
+comparisons ran as single-node Slurm jobs within the protocol resource ceiling.
+The HDF5 source, preset tooling, documentation, and accepted performance work
+were integrated into `main` after completing the feature campaign.
 
 ## Accepted optimizations
 

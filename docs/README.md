@@ -13,8 +13,8 @@ performance evidence:
   heuristic selection, bounded calibration, fingerprints, and cache behavior.
 - [Planner benchmark](PLANNER_BENCHMARK.md): the Slurm oracle matrix and
   acceptance measurements for the current planner.
-- [HDF5 source MVP](HDF5_MVP.md): implemented scope, real-data smoke checks,
-  official-loader evidence, and existing-conversion regression results.
+- [HDF5 source MVP](HDF5_MVP.md): implemented scope, full XVLA throughput,
+  real-data correctness, official-loader evidence, and regression results.
 - [HDF5 mapping presets](HDF5_PRESETS.md): interactive authoring, user/project
   storage, CLI conversion, JSON schema, and supported source representations.
 - [Current benchmark](../BENCHMARK.md): full-dataset conversion, round-trip,
