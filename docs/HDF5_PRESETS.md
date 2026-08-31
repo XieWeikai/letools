@@ -12,6 +12,11 @@ It suggests conventional target names, but every suggestion is editable. The
 scanner never decides that a field is semantically correct merely because its
 name resembles `qpos`, `action`, or a camera name.
 
+At conversion time, `HDF5SourceProvider` resolves the selected preset into an
+immutable `HDF5SourceConfig` containing the mapping, then constructs
+`HDF5Source`. This keeps preset names, paths, and interactive selection out of
+the source reader and out of the conversion coordinator.
+
 ## Create a preset
 
 Run the wizard in an interactive terminal:

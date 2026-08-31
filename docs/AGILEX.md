@@ -41,6 +41,9 @@ letools convert /data/agilex /data/agilex-v30 \
 Defaults are 30 FPS and robot type `cobot_magic`. Both are explicit CLI
 overrides. Raw-source auto-detection remains intentionally disabled; path-only
 `open_dataset()` continues to recognize physical LeRobot v2.1 and v3.0 layouts.
+`AgileXSourceProvider` owns these CLI options and converts them into an immutable
+`AgileXSourceConfig`; timestamp traversal and alignment remain inside
+`AgileXSource`.
 
 ## 3. Real workload
 
@@ -96,7 +99,8 @@ single samples.
 
 ## 5. Correctness evidence
 
-- The complete Python suite passes: 31 tests.
+- The complete Python suite passes: 35 tests, including provider registration,
+  source-specific CLI parsing, and immutable configuration checks.
 - Generated v2.1 and v3.0 datasets pass `letools validate --deep` without
   errors or warnings.
 - Cross-layout comparison is equal for 50 episodes and 42,664 Arrow rows.

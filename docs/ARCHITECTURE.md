@@ -31,6 +31,9 @@ plugins or third-party backends by entry point.
               | CLI (cli.py) | Python API (__init__) |
               +-----------------+-----------------+
                                 |
+              source provider -> typed source config
+              bootstrap parse -> registry -> final parse
+                                |
                    HDF5 tools: inspect -> preset
                                 |
                 +---------------+---------------+
@@ -130,6 +133,9 @@ because h5py serializes HDF5 C API calls inside one process.
 | Module | Owns | Must not own |
 | --- | --- | --- |
 | `cli.py` | Argument parsing, exit status, JSON serialization | Format logic, planning policy |
+| `source_providers/base.py` | CLI source-factory contract and frontend context | Dataset parsing or conversion execution |
+| `source_providers/registry.py` | Provider names, aliases, and conflict-free lookup | Source detection or plugin semantics |
+| `source_providers/{lerobot,hdf5,agilex}.py` | Provider-specific arguments, immutable config, and source construction | Episode reads, planning, or target writing |
 | `conversion.py` | Version dispatch, staging, validation gate, publication, stage lifecycle | File-layout details, worker selection |
 | `conversion_types.py` | Explicit execution configuration and result types | Resource discovery or heuristics |
 | `model.py` | Version-neutral dataset and episode contracts | Filesystem parsing or output layout |
@@ -154,7 +160,43 @@ because h5py serializes HDF5 C API calls inside one process.
 | `doctor.py` | Installed-provider report | Installation or environment mutation |
 | `native/` | Parallel file primitives and optional FFmpeg hot paths | Python model or planner policy |
 
-## 5. Source plugin contract
+## 5. Source provider contract
+
+`SourceProvider` is a frontend factory, not a data reader. It exists because
+different source families require different construction inputs. Each provider
+owns three operations:
+
+```python
+def add_arguments(parser: argparse.ArgumentParser) -> None: ...
+def config_from_args(args, context) -> SourceConfig: ...
+def open(source: Path, config: SourceConfig) -> DatasetSource: ...
+```
+
+The CLI first parses only `--source-format` using a bootstrap parser. It looks
+up that name in `SourceProviderRegistry`, rebuilds the final parser with only
+the selected provider's arguments, creates an immutable typed config, and then
+constructs the source. The original `--preset NAME` shorthand still selects
+HDF5 when `--source-format` is omitted. Other cross-provider option combinations
+are rejected by `argparse` because the unrelated options were never registered.
+
+Built-in configurations are `LeRobotSourceConfig`, `HDF5SourceConfig`, and
+`AgileXSourceConfig`. Configs contain resolved constructor inputs rather than
+the complete parsed namespace. In particular, `HDF5SourceProvider` owns preset
+lookup and optional TUI selection and produces a config containing an
+`HDF5Mapping`; `AgileXSourceProvider` validates and normalizes instruction, FPS,
+and robot type before constructing `AgileXSource`.
+
+Providers must not traverse episodes, parse frame payloads, profile resources,
+choose workers, call planners, or write targets. Those responsibilities remain
+with `DatasetSource`, planner, coordinator, primitives, and backends. Once
+`create()` returns, downstream code sees only `DatasetSource`, so adding a
+provider does not add type branches to the conversion path.
+
+The built-in registry is deterministic and rejects duplicate names or aliases.
+Applications may register a provider in-process. The installed CLI does not yet
+discover external providers through Python package entry points.
+
+## 6. Source plugin contract
 
 `DatasetSource` exposes three attributes and one required data method:
 
@@ -196,7 +238,7 @@ starting at zero, accurate lengths and totals, consistent Arrow schemas, and a
 media input and profile for every declared video key. They read source data
 only and must not write the destination.
 
-## 6. Backend contract
+## 7. Backend contract
 
 A backend consumes a `DatasetSource`, a staging destination,
 `ConversionConfig`, and `StageRecorder`. It owns the complete target layout and
@@ -207,7 +249,7 @@ version. Custom backend injection is not a public API yet. This keeps the
 supported output-format surface explicit and makes validation behavior
 predictable.
 
-## 7. Conversion coordinator
+## 8. Conversion coordinator
 
 The conversion coordinator implements the lifecycle common to both formats:
 
@@ -247,7 +289,7 @@ Stage metrics contain elapsed seconds and optional task/input/output counts.
 They diagnose internal phase costs; external wall time remains the authoritative
 end-to-end benchmark because it also includes process startup and serialization.
 
-## 8. v2.1 to v3.0 pipeline
+## 9. v2.1 to v3.0 pipeline
 
 ```text
 v2.1 JSON/JSONL metadata + per-episode files
@@ -267,7 +309,7 @@ are preserved while valid MP4 container metadata and timestamps may differ.
 `data_file_size_mb` and `video_file_size_mb` influence group boundaries and
 therefore only have target-layout meaning for v3 output.
 
-## 9. v3.0 to v2.1 pipeline
+## 10. v3.0 to v2.1 pipeline
 
 ```text
 v3 Parquet metadata + grouped data/video shards
@@ -285,7 +327,7 @@ Grouping by shared input avoids reopening a v3 shard once for every contained
 episode. v2.1 path fan-out is controlled by `chunks_size`; v3 target-size
 parameters are absent for this direction.
 
-## 10. HDF5 to LeRobot pipeline
+## 11. HDF5 to LeRobot pipeline
 
 ```text
 explicit HDF5Mapping + one HDF5 file per episode
@@ -322,7 +364,7 @@ a portable JSON preset. Loading a preset is a pure adapter from JSON to
 metadata layout remains owned by the backend. Consequently, the authoring tool
 is outside timed conversion stages and adds no per-frame or per-episode overhead.
 
-## 11. AgileX to LeRobot pipeline
+## 12. AgileX to LeRobot pipeline
 
 ```text
 episode directories with timestamped JSON and JPEG files
@@ -349,7 +391,7 @@ until media execution. The default MJPEG target path muxes original JPEG packet
 payloads without pixel decode; an explicitly selected compact codec uses the
 shared PyAV decode/encode path.
 
-## 12. Planner interaction
+## 13. Planner interaction
 
 The planner is optional and sits before the coordinator:
 
@@ -368,7 +410,7 @@ the same planner and then calls `convert()`. A cache hit skips bounded
 calibration, not source/dataset/storage inspection. See [PLANNER.md](PLANNER.md)
 for exact rules and limitations.
 
-## 13. Native acceleration boundary
+## 14. Native acceleration boundary
 
 `_native.py` performs capability-based dispatch. Filesystem operations have a
 portable Python implementation. Video concat, split, and packet digests use
@@ -412,7 +454,7 @@ dataset staging tree. V3 writes its larger grouped shards directly into that
 tree and removes a partial shard on failure. In both cases the conversion
 coordinator remains the only dataset publication boundary.
 
-## 14. Validation boundary
+## 15. Validation boundary
 
 Conversion's built-in gate is shallow validation: metadata totals, contiguous
 episode indices, referenced files, Parquet row counts, and basic schema-shape
@@ -425,13 +467,19 @@ comparison hashes encoded packet payloads per episode and camera. It does not
 require byte-identical Parquet files or MP4 containers because both formats
 permit semantically equivalent physical layouts.
 
-## 15. Extension rules
+## 16. Extension rules
 
 When adding a source format, prefer a new `DatasetSource` that maps it into the
 existing model. Do not teach both LeRobot backends how to parse that format.
 The plugin owns source-specific size accounting and locality; the planner and
 backends consume only source profiles. Batch frame reads prevent high-latency
 sources from forcing one Python callback per encoded frame.
+
+When that format needs CLI support, add an immutable source config and a
+`SourceProvider`, then register the provider. Do not add source-specific options
+or a source-type conditional to `cli.py`. Python-only custom sources do not need
+a provider: callers may continue to construct and pass `DatasetSource` objects
+directly.
 Promote a repeated operation into a reusable primitive only when it removes
 meaningful duplication or creates a measurable hot-path boundary.
 
@@ -444,7 +492,7 @@ Any performance change must preserve deep validation and bidirectional semantic
 comparison. Follow the [self-improvement protocol](../self-improve/PROTOCOL.md)
 for profiling, resource accounting, acceptance, and reporting.
 
-## 16. Code documentation conventions
+## 17. Code documentation conventions
 
 Every production Python module states its ownership boundary in a module
 docstring. Public classes, functions, abstract methods, plugin capabilities, and

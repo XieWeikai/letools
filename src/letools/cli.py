@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -16,12 +17,15 @@ from letools.planner import (
     plan_and_convert,
     plan_conversion,
 )
-from letools.plugins import AgileXSource, HDF5Source
+from letools.plugins import DatasetSource
+from letools.source_providers import (
+    SourceProvider,
+    SourceProviderContext,
+    source_providers,
+)
 from letools.tools.hdf5_preset import list_presets, load_preset
 from letools.tools.hdf5_tui import (
-    require_interactive_terminal,
     run_hdf5_preset_wizard,
-    select_hdf5_preset,
 )
 from letools.validation import compare_datasets, validate_dataset
 
@@ -36,75 +40,44 @@ def _print(value: Any) -> None:
     print(json.dumps(asdict(value), indent=2, default=_json_default))
 
 
-def _add_source_options(parser: argparse.ArgumentParser) -> None:
-    """Add source-plugin selection shared by convert and plan."""
+def _add_source_options(
+    parser: argparse.ArgumentParser,
+    provider: SourceProvider[Any] | None,
+) -> None:
+    """Add common source selection and only the selected provider's options."""
 
     parser.add_argument(
         "--source-format",
-        choices=["auto", "lerobot", "hdf5", "agilex"],
+        choices=source_providers.choices(),
         default="auto",
-        help="source plugin; HDF5 requires a mapping preset",
+        help="source provider; raw formats require explicit selection",
     )
-    parser.add_argument(
-        "--preset",
-        help="HDF5 preset name from the user store or an explicit JSON path",
-    )
-    parser.add_argument(
-        "--instruction",
-        help="fixed task instruction required by the AgileX source",
-    )
-    parser.add_argument(
-        "--fps",
-        type=int,
-        default=30,
-        help="AgileX output sampling rate (default: 30)",
-    )
-    parser.add_argument(
-        "--robot-type",
-        default="cobot_magic",
-        help="AgileX robot_type metadata (default: cobot_magic)",
-    )
+    selected = provider or source_providers.get("auto")
+    selected.add_arguments(parser)
+    parser.set_defaults(_source_provider=selected)
 
 
-def _open_cli_source(args: argparse.Namespace) -> Path | HDF5Source | AgileXSource:
-    """Resolve CLI source options into a path or an explicit source plugin."""
+def _open_cli_source(args: argparse.Namespace) -> DatasetSource:
+    """Delegate source construction to the provider selected during parsing."""
 
-    if args.source_format == "agilex":
-        if args.preset is not None:
-            raise ValueError("--preset cannot be combined with --source-format agilex")
-        instruction = getattr(args, "instruction", None)
-        if instruction is None:
-            raise ValueError("--instruction is required with --source-format agilex")
-        return AgileXSource(
-            args.source,
-            instruction,
-            fps=getattr(args, "fps", 30),
-            robot_type=getattr(args, "robot_type", "cobot_magic"),
-        )
-    if getattr(args, "instruction", None) is not None:
-        raise ValueError("--instruction is only supported with --source-format agilex")
-    hdf5_selected = args.source_format == "hdf5" or args.preset is not None
-    if not hdf5_selected:
-        return args.source
-    if args.source_format == "lerobot":
-        raise ValueError("--preset cannot be combined with --source-format lerobot")
-    if args.preset is not None:
-        preset = load_preset(args.preset)
-    else:
-        require_interactive_terminal()
-        preset = select_hdf5_preset()
-    return HDF5Source(args.source, preset.mapping)
+    provider: SourceProvider[Any] = args._source_provider
+    context = SourceProviderContext(
+        interactive=sys.stdin.isatty() and sys.stdout.isatty()
+    )
+    return provider.create(args.source, args, context)
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Build the stable CLI surface without embedding execution policy."""
+def build_parser(
+    source_provider: SourceProvider[Any] | None = None,
+) -> argparse.ArgumentParser:
+    """Build the CLI with source-specific options from one selected provider."""
 
     parser = argparse.ArgumentParser(prog="letools")
     commands = parser.add_subparsers(dest="command", required=True)
     conversion = commands.add_parser("convert", help="Convert a local dataset")
     conversion.add_argument("source", type=Path)
     conversion.add_argument("destination", type=Path)
-    _add_source_options(conversion)
+    _add_source_options(conversion, source_provider)
     conversion.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
     conversion.add_argument("--workers", type=int)
     conversion.add_argument("--video-workers", type=int)
@@ -119,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     planning = commands.add_parser("plan", help="Plan a local dataset conversion")
     planning.add_argument("source", type=Path)
     planning.add_argument("destination", type=Path)
-    _add_source_options(planning)
+    _add_source_options(planning, source_provider)
     planning.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
     planning.add_argument("--workers", type=int)
     planning.add_argument("--video-workers", type=int)
@@ -158,10 +131,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Select a source provider first, then parse its isolated option surface."""
+
+    tokens = list(sys.argv[1:] if argv is None else argv)
+    provider: SourceProvider[Any] | None = None
+    if tokens and tokens[0] in {"convert", "plan"}:
+        bootstrap = argparse.ArgumentParser(add_help=False)
+        bootstrap.add_argument(
+            "--source-format",
+            choices=source_providers.choices(),
+            default="auto",
+        )
+        # Preserve the original `--preset` shorthand for HDF5 while keeping it
+        # absent from every unrelated provider's final argument surface.
+        bootstrap.add_argument("--preset")
+        selected, _ = bootstrap.parse_known_args(tokens[1:])
+        name = (
+            "hdf5"
+            if selected.preset and selected.source_format == "auto"
+            else selected.source_format
+        )
+        provider = source_providers.get(name)
+    return build_parser(provider).parse_args(tokens)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Dispatch one CLI command and return a process exit status."""
 
-    args = build_parser().parse_args(argv)
+    args = parse_cli_args(argv)
     if args.command == "tools":
         if args.preset_command == "create":
             preset, path = run_hdf5_preset_wizard(

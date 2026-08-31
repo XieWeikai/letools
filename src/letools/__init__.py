@@ -21,11 +21,25 @@ from .plugins import (
     LeRobotV30Source,
     open_dataset,
 )
+from .source_providers import (
+    AgileXSourceConfig,
+    AgileXSourceProvider,
+    HDF5SourceConfig,
+    HDF5SourceProvider,
+    LeRobotSourceConfig,
+    LeRobotSourceProvider,
+    SourceProvider,
+    SourceProviderContext,
+    SourceProviderRegistry,
+    source_providers,
+)
 from .telemetry import StageMetrics
 from .validation import ComparisonReport, ValidationReport, compare_datasets, validate_dataset
 
 __all__ = [
     "AgileXSource",
+    "AgileXSourceConfig",
+    "AgileXSourceProvider",
     "ComparisonReport",
     "ConversionConfig",
     "ConversionPlan",
@@ -35,12 +49,19 @@ __all__ = [
     "HDF5Mapping",
     "HDF5NumericField",
     "HDF5Source",
+    "HDF5SourceConfig",
+    "HDF5SourceProvider",
     "HDF5VideoField",
     "LeRobotV21Source",
     "LeRobotV30Source",
+    "LeRobotSourceConfig",
+    "LeRobotSourceProvider",
     "PerformanceOverrides",
     "PlannedConversionResult",
     "StageMetrics",
+    "SourceProvider",
+    "SourceProviderContext",
+    "SourceProviderRegistry",
     "ValidationReport",
     "VideoEncodingConfig",
     "compare_datasets",
@@ -48,5 +69,6 @@ __all__ = [
     "open_dataset",
     "plan_and_convert",
     "plan_conversion",
+    "source_providers",
     "validate_dataset",
 ]

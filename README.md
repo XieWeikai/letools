@@ -252,40 +252,48 @@ print(result)
 
 The public API also exports `plan_conversion()`, `plan_and_convert()`,
 `validate_dataset()`, `compare_datasets()`, `open_dataset()`, the built-in
-LeRobot source classes, `AgileXSource`, and `HDF5Source` plus its mapping field classes. The
+LeRobot source classes, `AgileXSource`, `HDF5Source`, their typed source
+configuration classes, and the source-provider registry. The
 [usage guide](docs/USAGE.md) contains complete Python examples, custom-source
-requirements, result types, and validation behavior.
+and provider requirements, result types, and validation behavior.
 
 ## Architecture
 
 ```text
-CLI / Python API
-       |
-       v
-DatasetSource plugin ---- Episode model ---- Conversion plan
-       |                                         |
-       |                                         v
-       |                              v2.1 or v3.0 backend
-       |                                |       |
-       v                                v       v
-metadata + Arrow tables              Parquet  video primitives
-                                                  |
-                                  +---------------+---------------+
-                                  |                               |
-                           portable PyAV                    letools-native
-                           implementation                  Rust acceleration
+CLI --source-format              Python API
+       |                              |
+       v                              |
+SourceProvider -> typed config        |
+       |                              |
+       +-------------+----------------+
+                     v
+             DatasetSource plugin ---- Episode model ---- Conversion plan
+                     |                                         |
+                     |                                         v
+                     |                              v2.1 or v3.0 backend
+                     |                                |       |
+                     v                                v       v
+             metadata + Arrow tables              Parquet  video primitives
+                                                                |
+                                                +---------------+---------------+
+                                                |                               |
+                                         portable PyAV                    letools-native
+                                         implementation                  Rust acceleration
 ```
 
-Plugins read a physical dataset and expose metadata, episodes, Arrow tables,
-and video slices. Backends consume that common model and write a target format.
-This keeps format-specific layout out of conversion orchestration and lets
-additional source plugins reuse both LeRobot backends.
+Source providers own CLI option registration, typed configuration, and source
+construction. Plugins read a physical dataset and expose metadata, episodes,
+Arrow tables, and video slices. Backends consume that common model and write a
+target format. This keeps frontend configuration and format-specific layout out
+of conversion orchestration and lets additional source plugins reuse both
+LeRobot backends.
 
 The current built-in plugins are:
 
 - `LeRobotV21Source`
 - `LeRobotV30Source`
 - `HDF5Source` (Python API or CLI with an explicit mapping preset)
+- `AgileXSource` (Python API or CLI with an explicit instruction)
 
 The current built-in backends write:
 

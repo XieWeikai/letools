@@ -143,6 +143,20 @@ when resources, storage, or dataset shape are not already characterized.
 | `--fps N` | AgileX output FPS; default 30 |
 | `--robot-type NAME` | AgileX robot type metadata; default `cobot_magic` |
 
+The CLI parses source options in two stages. It first selects a provider from
+`--source-format`, then accepts only that provider's arguments. For example,
+`--instruction` is absent from HDF5 and LeRobot parsing, while `--preset` is
+absent from AgileX and LeRobot parsing. Provider-specific help is available with:
+
+```bash
+letools convert SOURCE DESTINATION --source-format agilex --help
+letools convert SOURCE DESTINATION --source-format hdf5 --help
+```
+
+For compatibility, `--preset NAME_OR_PATH` without `--source-format hdf5`
+continues to select the HDF5 provider. New scripts should specify the source
+format explicitly because it makes the configuration boundary visible.
+
 The two target-size options affect only v3 output. They control grouping rather
 than exact encoded file size: Parquet compression and MP4 container overhead
 mean resulting files need not equal the target. Do not pass these options for
@@ -613,12 +627,32 @@ source = AgileXSource(
 convert(source, "/data/agilex-v30", "v3.0")
 ```
 
+Frontends that want the same typed construction boundary as the CLI can use the
+provider and immutable config directly:
+
+```python
+from pathlib import Path
+
+from letools import AgileXSourceConfig, AgileXSourceProvider
+
+config = AgileXSourceConfig(
+    instruction="pick up the object",
+    fps=30,
+    robot_type="cobot_magic",
+)
+source = AgileXSourceProvider().open(Path("/data/agilex"), config)
+```
+
+`HDF5SourceConfig` similarly contains a resolved `HDF5Mapping`; preset names,
+paths, and interactive selection are CLI concerns handled by
+`HDF5SourceProvider.config_from_args()`.
+
 JPEG input uses the default direct MJPEG packet-mux path. It avoids pixel
 decoding and re-encoding and is the baseline performance mode, but output size
 is close to the source JPEG payload. Python callers can select a compact lossy
 codec with `ConversionConfig.video_encoding`.
 
-## 11. Custom source plugins
+## 11. Custom source plugins and providers
 
 A custom input format can reuse both built-in output backends by implementing
 `DatasetSource`. No file registration is required when using the Python API:
@@ -691,6 +725,15 @@ Standalone validation and `open_dataset()` path auto-detection currently support
 only physical LeRobot v2.1 and v3.0 directories. CLI conversion and planning can
 also construct `HDF5Source` from an explicit preset or `AgileXSource` from an
 explicit instruction.
+
+To expose a custom source through an application CLI, implement a
+`SourceProvider` beside the `DatasetSource`. The provider registers only its
+construction arguments, converts them into an immutable config, and constructs
+the source. Register it with `source_providers.register(provider)`. The provider
+must not read episodes or call a backend; all conversion behavior starts after
+it returns the common `DatasetSource` interface. The installed `letools` command
+currently registers built-ins in code and does not discover package entry
+points.
 
 ## 12. Development setup
 

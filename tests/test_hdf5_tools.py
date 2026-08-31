@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from argparse import Namespace
 from pathlib import Path
 
-from letools.cli import _open_cli_source, build_parser, main
+from letools.cli import build_parser, main
+from letools.source_providers import HDF5SourceProvider, SourceProviderContext
 from letools.plugins import HDF5Source
 from letools.tools.hdf5_preset import (
     HDF5Preset,
@@ -77,8 +77,23 @@ def test_hdf5_preset_wizard_and_cli_source_selection(tmp_path: Path) -> None:
     assert preset.mapping.task_key == "language_instruction"
     assert any("Preset preview" in line for line in output)
 
-    source = _open_cli_source(
-        Namespace(source=root, source_format="hdf5", preset=str(preset_path))
+    provider = HDF5SourceProvider()
+    source = provider.create(
+        root,
+        build_parser(provider).parse_args(
+            [
+                "convert",
+                str(root),
+                str(tmp_path / "unused"),
+                "--source-format",
+                "hdf5",
+                "--preset",
+                str(preset_path),
+                "--to",
+                "v3.0",
+            ]
+        ),
+        SourceProviderContext(interactive=False),
     )
     assert isinstance(source, HDF5Source)
     assert source.metadata.total_frames == 7

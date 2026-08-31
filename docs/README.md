@@ -7,8 +7,8 @@ performance evidence:
   validation, HDF5 mappings, custom sources, Slurm operation, and troubleshooting.
 - [Installation](INSTALLATION.md): direct command setup, uv tool internals,
   editable and locked development modes, updates, removal, and Slurm visibility.
-- [Architecture](ARCHITECTURE.md): module ownership, boundaries, data model,
-  conversion pipelines, native acceleration, and extension points.
+- [Architecture](ARCHITECTURE.md): module ownership, SourceProvider construction,
+  two-stage CLI parsing, data flow, native acceleration, and extension points.
 - [Static planner](PLANNER.md): planner scope, resource and I/O inputs,
   heuristic selection, bounded calibration, fingerprints, and cache behavior.
 - [Planner benchmark](PLANNER_BENCHMARK.md): the Slurm oracle matrix and
