@@ -41,7 +41,7 @@ frames, three JPEG cameras, 376236 encoded frames, and 20.7 GiB of HDF5 input.
 | `2f37e36` | Pass HDF5 buffers without a bytes copy | +16.6% | +11.7% |
 | `720b66e` | Balance frame batches at 48 | +5.3% | +4.2% |
 | `6716c7e` | Write grouped v3 shards directly to staging | no regression | +5.6% |
-| feature tip | Isolate h5py media workers with safe spawn processes | 1.74x | 2.68x |
+| `d7e4469` | Isolate h5py media workers with safe spawn processes | 1.74x | 2.68x |
 
 At the final fixed eight-worker setting, v2.1 converts in an 11.70 second
 five-sample external-wall median (9.231 episodes/s, 10719 trajectory frames/s,
@@ -50,12 +50,21 @@ episodes/s, 17540 trajectory frames/s, and 52620 media frames/s). These are
 measured end-to-end CLI wall times and are not products of per-commit speedup
 ratios.
 
-Nine later HDF5 candidates were rejected: PyAV batch mux, batch 64 from the
+Fourteen later HDF5 candidates were rejected: PyAV batch mux, batch 64 from the
 older baseline, packet-mux planner 6/64, direct staging for both layouts,
 sequential Rust cross-device copy, planner 7/64, PyAV `mux_one`, and explicit
 FFmpeg packet buffering, plus a forkserver follow-up that improved v2.1 but
 missed the v3.0 acceptance threshold. Copy concurrency limits and source/chunk
 profiles were also retained as read-only baseline evidence.
+
+Iterations 0036-0040 tested five further directions without changing the
+accepted implementation. Larger HDF5 frame batches (96 and 192) improved the
+best v3 sample by only 1-2% and did not clear the threshold. Raising the v3
+video shard target from 400 to 800 MiB regressed the median by 4.1%. Direct
+v2.1 process output to JuiceFS regressed the median by 4.9%. A process-local
+HDF5 handle LRU was flat to slightly slower for both targets while increasing
+resident memory. Finally, process-map chunks of three improved v3.0 by 4.0%
+but regressed v2.1 by 10.5%, so the global scheduling change was rejected.
 
 ## Rejected experiments
 
