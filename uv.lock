@@ -130,7 +130,7 @@ test = [
 requires-dist = [
     { name = "av", specifier = ">=15,<17" },
     { name = "h5py", specifier = ">=3.12,<4" },
-    { name = "letools-native", specifier = "==0.1.0", index = "https://xieweikai.github.io/letools/simple" },
+    { name = "letools-native", specifier = "==0.2.0", index = "https://xieweikai.github.io/letools/simple" },
     { name = "numpy", specifier = ">=2" },
     { name = "pyarrow", specifier = ">=18" },
 ]
@@ -141,14 +141,14 @@ test = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "letools-native"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://xieweikai.github.io/letools/simple" }
 wheels = [
-    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:a974af629ae27bbd1b11609f6087adfb91c99a50921826054111287fad3113d8" },
-    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:1b662c7ce7b9ac9c15971537b59ba959ba99701fef561e52d8a9c9460f7d2689" },
-    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:a1b91a46ef19840234712f5baa0606b9ef9987cc1c87bea8109bde259853d6e7" },
-    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:25ba8ca545e2e5ffc1f42769dca03b366d411990180dc9e8fe4e0eaae5a1e326" },
-    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.1.0/letools_native-0.1.0-cp39-abi3-win_amd64.whl", hash = "sha256:0dbad0a3d733f572aa7558ce2c7c6dde341f483bf7a76f89eb58ec7ee51d3283" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.2.0/letools_native-0.2.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e7a5f7da961c610b08e4529bd978e2bbfe164911596d4a06d293a3dc6e648674" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.2.0/letools_native-0.2.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:d0904841dd3e2a1a89341aee2b4fe2daee0df24f026d91d379713433d835abe8" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.2.0/letools_native-0.2.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:23311b1477c3d9593412e7b1459cfc7eca0de5b79b566236301601136bd8eca2" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.2.0/letools_native-0.2.0-cp39-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:dc56fb6ea7acd3e000f32a7ed4c2413deffbf2506cc6b46f927790a69d2a9b19" },
+    { url = "https://github.com/XieWeikai/letools/releases/download/native-v0.2.0/letools_native-0.2.0-cp39-abi3-win_amd64.whl", hash = "sha256:d13f3219624ef42d62cce8f1c719ab772163fcb55eb65dabb1a920fc2a403729" },
 ]
 
 [[package]]
