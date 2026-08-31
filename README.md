@@ -3,7 +3,8 @@
 `letools` is a Python and Rust toolkit for creating, converting, and validating
 [LeRobot](https://github.com/huggingface/lerobot) datasets. The current release
 supports lossless semantic conversion in both directions between LeRobot v2.1
-and v3.0, plus explicit mapping-driven HDF5 export to either LeRobot version.
+and v3.0, explicit mapping-driven HDF5 export, and timestamp-aligned AgileX
+directory export to either LeRobot version.
 
 The public API consistently uses LeRobot's `episode` terminology. Python owns
 the plugin API and conversion plan; native Rust primitives accelerate work that
@@ -101,6 +102,13 @@ letools convert /data/hdf5 /data/dataset-v30 \
   --source-format hdf5 --preset my-dataset --to v3.0 --auto
 ```
 
+Convert an AgileX recording and add one instruction to every episode:
+
+```bash
+letools convert /data/agilex /data/dataset-v30 \
+  --source-format agilex --instruction "pick up the object" --to v3.0 --auto
+```
+
 JPEG-valued HDF5 cameras are preserved as MJPEG packets by default. This avoids
 lossy transcoding and is substantially faster, but the generated videos remain
 close to the source JPEG size. Python callers can select compact MPEG-4 output
@@ -112,8 +120,11 @@ still controls the job count and no multiprocessing setup is required. See
 | Option | Meaning |
 | --- | --- |
 | `--to VERSION` | Required target; accepts `v2.1`, `2.1`, `v3.0`, or `3.0` |
-| `--source-format auto\|lerobot\|hdf5` | Select source parsing; default is LeRobot auto-detection |
+| `--source-format auto\|lerobot\|hdf5\|agilex` | Select source parsing; default is LeRobot auto-detection |
 | `--preset NAME_OR_PATH` | Load an HDF5 preset by user-store name or JSON path; implies HDF5 |
+| `--instruction TEXT` | Fixed task instruction required by the AgileX source |
+| `--fps N` | AgileX output FPS; default 30 |
+| `--robot-type NAME` | AgileX robot type metadata; default `cobot_magic` |
 | `--workers N` | Concurrent Parquet/data groups |
 | `--video-workers N` | Concurrent video remux or encode jobs |
 | `--data-file-size-mb N` | Approximate uncompressed Parquet shard target for v3 output only |
@@ -240,7 +251,7 @@ print(result)
 
 The public API also exports `plan_conversion()`, `plan_and_convert()`,
 `validate_dataset()`, `compare_datasets()`, `open_dataset()`, the built-in
-LeRobot source classes, and `HDF5Source` plus its mapping field classes. The
+LeRobot source classes, `AgileXSource`, and `HDF5Source` plus its mapping field classes. The
 [usage guide](docs/USAGE.md) contains complete Python examples, custom-source
 requirements, result types, and validation behavior.
 

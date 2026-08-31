@@ -10,6 +10,7 @@ from .planner import (
     plan_conversion,
 )
 from .plugins import (
+    AgileXSource,
     DatasetSource,
     Episode,
     HDF5Mapping,
@@ -24,6 +25,7 @@ from .telemetry import StageMetrics
 from .validation import ComparisonReport, ValidationReport, compare_datasets, validate_dataset
 
 __all__ = [
+    "AgileXSource",
     "ComparisonReport",
     "ConversionConfig",
     "ConversionPlan",

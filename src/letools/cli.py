@@ -16,7 +16,7 @@ from letools.planner import (
     plan_and_convert,
     plan_conversion,
 )
-from letools.plugins import HDF5Source
+from letools.plugins import AgileXSource, HDF5Source
 from letools.tools.hdf5_preset import list_presets, load_preset
 from letools.tools.hdf5_tui import (
     require_interactive_terminal,
@@ -41,7 +41,7 @@ def _add_source_options(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "--source-format",
-        choices=["auto", "lerobot", "hdf5"],
+        choices=["auto", "lerobot", "hdf5", "agilex"],
         default="auto",
         help="source plugin; HDF5 requires a mapping preset",
     )
@@ -49,11 +49,40 @@ def _add_source_options(parser: argparse.ArgumentParser) -> None:
         "--preset",
         help="HDF5 preset name from the user store or an explicit JSON path",
     )
+    parser.add_argument(
+        "--instruction",
+        help="fixed task instruction required by the AgileX source",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=30,
+        help="AgileX output sampling rate (default: 30)",
+    )
+    parser.add_argument(
+        "--robot-type",
+        default="cobot_magic",
+        help="AgileX robot_type metadata (default: cobot_magic)",
+    )
 
 
-def _open_cli_source(args: argparse.Namespace) -> Path | HDF5Source:
+def _open_cli_source(args: argparse.Namespace) -> Path | HDF5Source | AgileXSource:
     """Resolve CLI source options into a path or an explicit source plugin."""
 
+    if args.source_format == "agilex":
+        if args.preset is not None:
+            raise ValueError("--preset cannot be combined with --source-format agilex")
+        instruction = getattr(args, "instruction", None)
+        if instruction is None:
+            raise ValueError("--instruction is required with --source-format agilex")
+        return AgileXSource(
+            args.source,
+            instruction,
+            fps=getattr(args, "fps", 30),
+            robot_type=getattr(args, "robot_type", "cobot_magic"),
+        )
+    if getattr(args, "instruction", None) is not None:
+        raise ValueError("--instruction is only supported with --source-format agilex")
     hdf5_selected = args.source_format == "hdf5" or args.preset is not None
     if not hdf5_selected:
         return args.source

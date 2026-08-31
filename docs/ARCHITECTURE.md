@@ -12,6 +12,7 @@ The implemented product boundary is intentionally narrow:
 
 - read LeRobot v2.1 and v3.0 datasets;
 - read one-file-per-episode HDF5 datasets through an explicit mapping;
+- read timestamped AgileX episode directories with an explicit instruction;
 - write LeRobot v2.1 and v3.0 datasets;
 - accept a custom `DatasetSource` through the Python API;
 - validate one dataset and compare two datasets semantically;
@@ -57,6 +58,7 @@ plugins or third-party backends by entry point.
    - LeRobotV21Source                          - LeRobotV21Backend
    - LeRobotV30Source                          - LeRobotV30Backend
    - HDF5Source                                - LeRobotV21Backend
+   - AgileXSource                              - LeRobotV30Backend
    - custom Python source                      - LeRobotV30Backend
            |                                         |
            +--------------------+--------------------+
@@ -134,6 +136,7 @@ because h5py serializes HDF5 C API calls inside one process.
 | `plugins/base.py` | `DatasetSource` read protocol | Target writing |
 | `plugins/lerobot.py` | v2.1/v3.0 metadata parsing and logical slicing | Target writing and concurrency policy |
 | `plugins/hdf5.py` | Explicit HDF5 mapping, schema scan, Arrow reads, and frame batches | Target layout or robot-specific presets |
+| `plugins/agilex.py` | AgileX directory parsing, timestamp alignment, task injection, and JPEG frame batches | Target layout or backend concurrency policy |
 | `tools/hdf5_preset.py` | Versioned preset JSON, user-store lookup, read-only HDF5 inventory | Robot semantic decisions or conversion execution |
 | `tools/hdf5_tui.py` | Interactive mapping authoring and stored-preset selection | Source reading, backend policy, or silent inference |
 | `backends/base.py` | Backend write protocol | Source-format parsing |
@@ -184,9 +187,9 @@ container internals. The default implementations adapt path-based Parquet and
 MP4 sources and cache resource inspection. Other formats override them.
 
 `open_dataset()` reads `meta/info.json` and dispatches only `v2.1` and `v3.0`.
-The Python API passes `HDF5Source` and custom sources as objects. The CLI uses a
-versioned HDF5 preset to construct the same `HDF5Source`; it does not add HDF5
-guessing to `open_dataset()`.
+The Python API passes `HDF5Source`, `AgileXSource`, and custom sources as
+objects. The CLI uses explicit source selection to construct HDF5 and AgileX
+plugins; it does not add raw-format guessing to `open_dataset()`.
 
 Source implementations must provide stable episode order, contiguous indices
 starting at zero, accurate lengths and totals, consistent Arrow schemas, and a
@@ -319,7 +322,34 @@ a portable JSON preset. Loading a preset is a pure adapter from JSON to
 metadata layout remains owned by the backend. Consequently, the authoring tool
 is outside timed conversion stages and adds no per-frame or per-episode overhead.
 
-## 11. Planner interaction
+## 11. AgileX to LeRobot pipeline
+
+```text
+episode directories with timestamped JSON and JPEG files
+    -> natural-sort episodeN directories and timestamp-sort each stream
+    -> retain the newest common frame count across the three cameras
+    -> use left-camera timestamps as the synchronization clock
+    -> zero-order hold each joint stream at each camera timestamp
+    -> puppet left/right positions become observation.state
+    -> master left/right positions become action
+    -> generate canonical timestamp/index/task columns
+    -> expose JPEG paths as bounded AgileXFrameSequence batches
+    -> v2.1 or v3.0 backend writes the standard target layout
+```
+
+`AgileXSource` owns these robot-specific semantics. The CLI requires a fixed,
+non-empty instruction rather than inferring one from a directory name. The
+source publishes that instruction as task 0, assigns it to every episode, and
+fills every frame's `task_index` with zero. Backends consequently remain unaware
+of AgileX paths, timestamp rules, and instruction policy.
+
+Joint JSON is parsed once during source construction, retained as dense NumPy
+arrays, and exposed as Arrow fixed-size list columns. JPEG bytes remain lazy
+until media execution. The default MJPEG target path muxes original JPEG packet
+payloads without pixel decode; an explicitly selected compact codec uses the
+shared PyAV decode/encode path.
+
+## 12. Planner interaction
 
 The planner is optional and sits before the coordinator:
 
@@ -338,7 +368,7 @@ the same planner and then calls `convert()`. A cache hit skips bounded
 calibration, not source/dataset/storage inspection. See [PLANNER.md](PLANNER.md)
 for exact rules and limitations.
 
-## 12. Native acceleration boundary
+## 13. Native acceleration boundary
 
 `_native.py` performs capability-based dispatch. Filesystem operations have a
 portable Python implementation. Video concat, split, and packet digests use
@@ -382,7 +412,7 @@ dataset staging tree. V3 writes its larger grouped shards directly into that
 tree and removes a partial shard on failure. In both cases the conversion
 coordinator remains the only dataset publication boundary.
 
-## 13. Validation boundary
+## 14. Validation boundary
 
 Conversion's built-in gate is shallow validation: metadata totals, contiguous
 episode indices, referenced files, Parquet row counts, and basic schema-shape
@@ -395,7 +425,7 @@ comparison hashes encoded packet payloads per episode and camera. It does not
 require byte-identical Parquet files or MP4 containers because both formats
 permit semantically equivalent physical layouts.
 
-## 14. Extension rules
+## 15. Extension rules
 
 When adding a source format, prefer a new `DatasetSource` that maps it into the
 existing model. Do not teach both LeRobot backends how to parse that format.
@@ -414,7 +444,7 @@ Any performance change must preserve deep validation and bidirectional semantic
 comparison. Follow the [self-improvement protocol](../self-improve/PROTOCOL.md)
 for profiling, resource accounting, acceptance, and reporting.
 
-## 15. Code documentation conventions
+## 16. Code documentation conventions
 
 Every production Python module states its ownership boundary in a module
 docstring. Public classes, functions, abstract methods, plugin capabilities, and

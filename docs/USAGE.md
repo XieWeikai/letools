@@ -138,6 +138,10 @@ when resources, storage, or dataset shape are not already characterized.
 | `--no-cache` | Do not read or write planner cache for this auto run |
 | `--source-format hdf5` | Construct an HDF5 source instead of LeRobot path auto-detection |
 | `--preset NAME_OR_PATH` | Use a stored HDF5 mapping preset; implies HDF5 source selection |
+| `--source-format agilex` | Construct an AgileX timestamped-directory source |
+| `--instruction TEXT` | Fixed task instruction required by the AgileX source |
+| `--fps N` | AgileX output FPS; default 30 |
+| `--robot-type NAME` | AgileX robot type metadata; default `cobot_magic` |
 
 The two target-size options affect only v3 output. They control grouping rather
 than exact encoded file size: Parquet compression and MP4 container overhead
@@ -559,7 +563,62 @@ the source class and a SHA-256 of the complete mapping, so two semantic mappings
 cannot share a calibrated plan. The CLI constructs the same object from the
 selected preset before planning.
 
-## 10. Custom source plugins
+## 10. Convert an AgileX directory
+
+The built-in AgileX source expects `episodeN` directories with these streams:
+
+```text
+episode0/
+  arm/jointState/{puppetLeft,puppetRight,masterLeft,masterRight}/*.json
+  camera/color/{left,front,right}/*.jpg
+```
+
+Filenames are numeric timestamps. Each joint JSON object must contain a
+seven-element `position` array. `puppetLeft + puppetRight` becomes the 14-value
+`observation.state`; `masterLeft + masterRight` becomes the 14-value `action`.
+The newest common camera frame count is retained, with extra leading frames
+discarded. Left-camera timestamps are the clock, and joint streams use the
+latest sample at or before each frame. Canonical LeRobot timestamps and indices
+are generated at the requested FPS.
+
+One non-empty instruction is required and is assigned to every episode:
+
+```bash
+letools convert /data/agilex /data/agilex-v21 \
+  --source-format agilex \
+  --instruction "pick up the object" \
+  --to v2.1 --auto
+
+letools convert /data/agilex /data/agilex-v30 \
+  --source-format agilex \
+  --instruction "pick up the object" \
+  --to v3.0 --auto
+```
+
+The instruction is written to the target task table, each episode's `tasks`,
+and each frame's `task_index`. The defaults are 30 FPS and robot type
+`cobot_magic`; override them with `--fps` and `--robot-type` when required.
+
+Python callers construct the same source explicitly:
+
+```python
+from letools import AgileXSource, convert
+
+source = AgileXSource(
+    "/data/agilex",
+    instruction="pick up the object",
+    fps=30,
+    robot_type="cobot_magic",
+)
+convert(source, "/data/agilex-v30", "v3.0")
+```
+
+JPEG input uses the default direct MJPEG packet-mux path. It avoids pixel
+decoding and re-encoding and is the baseline performance mode, but output size
+is close to the source JPEG payload. Python callers can select a compact lossy
+codec with `ConversionConfig.video_encoding`.
+
+## 11. Custom source plugins
 
 A custom input format can reuse both built-in output backends by implementing
 `DatasetSource`. No file registration is required when using the Python API:
@@ -630,9 +689,10 @@ passed as objects. `plan_conversion()` now uses only the format-neutral
 profile methods and does not assume that source data is stored as Parquet.
 Standalone validation and `open_dataset()` path auto-detection currently support
 only physical LeRobot v2.1 and v3.0 directories. CLI conversion and planning can
-also construct `HDF5Source` from an explicit preset.
+also construct `HDF5Source` from an explicit preset or `AgileXSource` from an
+explicit instruction.
 
-## 11. Development setup
+## 12. Development setup
 
 Install test and native development groups:
 
@@ -667,7 +727,7 @@ uv run maturin develop \
 Normal users should not set these variables. Release wheels carry their own
 runtime dependencies and relative rpaths.
 
-## 12. Common failures
+## 13. Common failures
 
 ### `letools: command not found`
 
