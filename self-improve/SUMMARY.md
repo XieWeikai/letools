@@ -66,6 +66,27 @@ but regressed v2.1 by 10.5%, so the global scheduling change was rejected.
 
 ## Rejected experiments
 
+### AgileX source campaign
+
+Iterations 0041-0045 evaluated five optimization directions on the 50-episode,
+42664-frame, 4.25 GiB `do_something` workload without changing the accepted
+AgileX implementation:
+
+| Iteration | Candidate | Result |
+| --- | --- | --- |
+| 0041 | Rust/Rayon bulk file-size inspection | source open +2.0%, below threshold; RSS +4.8% |
+| 0042 | Single-read JSON parsing and size accounting | source open +2.3%, below threshold |
+| 0043 | Eight-thread episode scan | 2.58x slower; system CPU and RSS increased |
+| 0044 | Retained timestamps and NumPy search alignment | 4.5% slower |
+| 0045 | 200 MiB local thread-frame auto groups | full auto wall +0.8%, below threshold |
+
+The local substitute lane used an Intel i7-13700 with 24 effective CPUs,
+31.1 GiB memory, and ext4 on NVMe because no Slurm allocation was available.
+Runs were serial with explicit cache classification. The fifth iteration used
+five alternating full B/C pairs after the initial spread exceeded 5%: baseline
+median 12.03 seconds and candidate median 11.93 seconds. All candidates were
+reverted under the protocol's 3% measurable-improvement gate.
+
 Eight candidates were measured and rejected: target-local concat staging, concat
 copyfile publication, split copyfile publication, split parent-directory
 deduplication, one split temporary directory per job, and concurrent left/right
