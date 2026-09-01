@@ -68,5 +68,17 @@ class AgileXSourceProvider(SourceProvider[AgileXSourceConfig]):
             robot_type=config.robot_type,
         )
 
+    def distributed_spec(self, source: Path, config: AgileXSourceConfig):
+        """Embed every semantic input required to reconstruct AgileXSource."""
+
+        from letools.distributed.source import agilex_source_spec
+
+        return agilex_source_spec(
+            source,
+            config.instruction,
+            config.fps,
+            config.robot_type,
+        )
+
 
 __all__ = ["AgileXSourceConfig", "AgileXSourceProvider"]

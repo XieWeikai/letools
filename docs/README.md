@@ -19,6 +19,8 @@ performance evidence:
   heuristic selection, bounded calibration, fingerprints, and cache behavior.
 - [Specialized merge engine](MERGE.md): fixed same-version scope, physical data
   path, autotune, CLI/API, correctness rules, and Slurm acceptance evidence.
+- [Distributed conversion](DISTRIBUTED.md): scheduler-neutral task protocol,
+  shared state, Local/Slurm/Kubernetes adapters, retries, and publication.
 - [Planner benchmark](PLANNER_BENCHMARK.md): the Slurm oracle matrix and
   acceptance measurements for the current planner.
 - [HDF5 source MVP](HDF5_MVP.md): implemented scope, full XVLA throughput,

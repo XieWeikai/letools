@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -11,6 +12,17 @@ from typing import Any
 
 from letools.conversion import ConversionConfig, convert
 from letools.doctor import environment_report
+from letools.distributed import (
+    KubernetesScheduler,
+    LocalScheduler,
+    SlurmScheduler,
+    SourceSpec,
+    WorkerConfig,
+    distributed_status,
+    plan_distributed_conversion,
+    run_distributed_task,
+    try_finalize_distributed_job,
+)
 from letools.doctor_external import run_doctor
 from letools.merge import merge_datasets, plan_merge
 from letools.planner import (
@@ -74,6 +86,15 @@ def _open_cli_source(args: argparse.Namespace) -> DatasetSource:
     return provider.create(args.source, args, context)
 
 
+def _distributed_source_spec(args: argparse.Namespace) -> SourceSpec:
+    """Resolve provider options into a portable, self-contained worker spec."""
+
+    provider: SourceProvider[Any] = args._source_provider
+    context = SourceProviderContext(interactive=False)
+    config = provider.config_from_args(args, context)
+    return provider.distributed_spec(args.source, config)
+
+
 def build_parser(
     source_provider: SourceProvider[Any] | None = None,
 ) -> argparse.ArgumentParser:
@@ -109,6 +130,64 @@ def build_parser(
     planning.add_argument("--calibration-seconds", type=float, default=10.0)
     planning.add_argument("--calibration-mb", type=int, default=1024)
     planning.add_argument("--no-cache", action="store_true")
+    distributed = commands.add_parser(
+        "dist", help="Plan and run scheduler-neutral distributed conversion"
+    )
+    distributed_commands = distributed.add_subparsers(
+        dest="dist_command", required=True
+    )
+    dist_plan = distributed_commands.add_parser(
+        "plan", help="Create an immutable distributed job manifest"
+    )
+    dist_plan.add_argument("source", type=Path)
+    dist_plan.add_argument("destination", type=Path)
+    _add_source_options(dist_plan, source_provider)
+    dist_plan.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
+    dist_plan.add_argument("--job-dir", required=True, type=Path)
+    partition = dist_plan.add_mutually_exclusive_group()
+    partition.add_argument("--tasks", type=int)
+    partition.add_argument("--episodes-per-task", type=int)
+    dist_plan.add_argument("--workers", type=int, default=8)
+    dist_plan.add_argument("--video-workers", type=int, default=3)
+    dist_plan.add_argument("--data-file-size-mb", type=int, default=100)
+    dist_plan.add_argument("--video-file-size-mb", type=int, default=200)
+    dist_plan.add_argument("--overwrite", action="store_true")
+    dist_plan.add_argument("--no-validate", action="store_true")
+    dist_submit = distributed_commands.add_parser(
+        "submit", help="Run or submit every task in an existing plan"
+    )
+    dist_submit.add_argument("job_dir", type=Path)
+    dist_submit.add_argument(
+        "--scheduler", choices=["local", "slurm", "kubernetes"], required=True
+    )
+    dist_submit.add_argument("--max-parallel", type=int)
+    dist_submit.add_argument("--cpus-per-task", type=int)
+    dist_submit.add_argument("--memory")
+    dist_submit.add_argument("--partition")
+    dist_submit.add_argument("--account")
+    dist_submit.add_argument("--time-limit")
+    dist_submit.add_argument("--image")
+    dist_submit.add_argument("--namespace", default="default")
+    dist_submit.add_argument("--pvc-claim")
+    dist_submit.add_argument("--mount-path", default="/shared")
+    dist_submit.add_argument(
+        "--render-only", action="store_true", help="write scheduler artifacts without submitting"
+    )
+    dist_worker = distributed_commands.add_parser(
+        "worker", help="Execute one manifest task (normally called by a scheduler)"
+    )
+    dist_worker.add_argument("job_dir", type=Path)
+    task_identity = dist_worker.add_mutually_exclusive_group(required=True)
+    task_identity.add_argument("--task-id", type=int)
+    task_identity.add_argument("--task-id-env")
+    dist_finalize = distributed_commands.add_parser(
+        "finalize", help="Publish a job whose task results are complete"
+    )
+    dist_finalize.add_argument("job_dir", type=Path)
+    dist_status = distributed_commands.add_parser(
+        "status", help="Read progress from the shared job state"
+    )
+    dist_status.add_argument("job_dir", type=Path)
     validation = commands.add_parser("validate", help="Validate a LeRobot dataset")
     validation.add_argument("dataset", type=Path)
     validation.add_argument("--deep", action="store_true")
@@ -199,7 +278,12 @@ def parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     tokens = list(sys.argv[1:] if argv is None else argv)
     provider: SourceProvider[Any] | None = None
+    source_tokens: list[str] | None = None
     if tokens and tokens[0] in {"convert", "plan"}:
+        source_tokens = tokens[1:]
+    elif len(tokens) > 1 and tokens[:2] == ["dist", "plan"]:
+        source_tokens = tokens[2:]
+    if source_tokens is not None:
         bootstrap = argparse.ArgumentParser(add_help=False)
         bootstrap.add_argument(
             "--source-format",
@@ -209,7 +293,7 @@ def parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
         # Preserve the original `--preset` shorthand for HDF5 while keeping it
         # absent from every unrelated provider's final argument surface.
         bootstrap.add_argument("--preset")
-        selected, _ = bootstrap.parse_known_args(tokens[1:])
+        selected, _ = bootstrap.parse_known_args(source_tokens)
         name = (
             "hdf5"
             if selected.preset and selected.source_format == "auto"
@@ -236,6 +320,70 @@ def main(argv: list[str] | None = None) -> int:
         return run_doctor(tokens[1:])
 
     args = parse_cli_args(tokens)
+    if args.command == "dist":
+        if args.dist_command == "plan":
+            plan = plan_distributed_conversion(
+                _distributed_source_spec(args),
+                args.destination,
+                args.to,
+                args.job_dir,
+                task_count=args.tasks,
+                episodes_per_task=args.episodes_per_task,
+                worker=WorkerConfig(
+                    workers=args.workers,
+                    video_workers=args.video_workers,
+                    data_file_size_mb=args.data_file_size_mb,
+                    video_file_size_mb=args.video_file_size_mb,
+                ),
+                overwrite=args.overwrite,
+                validate=not args.no_validate,
+            )
+            _print(plan)
+            return 0
+        if args.dist_command == "worker":
+            task_id = args.task_id
+            if args.task_id_env is not None:
+                try:
+                    task_id = int(os.environ[args.task_id_env])
+                except KeyError as error:
+                    raise ValueError(
+                        f"Task id environment variable is not set: {args.task_id_env}"
+                    ) from error
+            _print(run_distributed_task(args.job_dir, task_id))
+            return 0
+        if args.dist_command == "finalize":
+            _print(try_finalize_distributed_job(args.job_dir))
+            return 0
+        if args.dist_command == "status":
+            _print(distributed_status(args.job_dir))
+            return 0
+        if args.scheduler == "local":
+            scheduler = LocalScheduler(args.max_parallel or 1)
+        elif args.scheduler == "slurm":
+            scheduler = SlurmScheduler(
+                max_parallel=args.max_parallel,
+                cpus_per_task=args.cpus_per_task,
+                memory=args.memory,
+                partition=args.partition,
+                account=args.account,
+                time_limit=args.time_limit,
+                submit=not args.render_only,
+            )
+        else:
+            if not args.image:
+                raise ValueError("Kubernetes submission requires --image")
+            scheduler = KubernetesScheduler(
+                args.image,
+                namespace=args.namespace,
+                max_parallel=args.max_parallel,
+                cpu=str(args.cpus_per_task) if args.cpus_per_task else None,
+                memory=args.memory,
+                pvc_claim=args.pvc_claim,
+                mount_path=args.mount_path,
+                submit=not args.render_only,
+            )
+        _print(scheduler.submit(args.job_dir))
+        return 0
     if args.command == "tools":
         if args.preset_command == "create":
             preset, path = run_hdf5_preset_wizard(

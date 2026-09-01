@@ -50,5 +50,12 @@ class HDF5SourceProvider(SourceProvider[HDF5SourceConfig]):
     def open(self, source: Path, config: HDF5SourceConfig) -> DatasetSource:
         return HDF5Source(source, config.mapping)
 
+    def distributed_spec(self, source: Path, config: HDF5SourceConfig):
+        """Embed the resolved mapping so workers need no user preset store."""
+
+        from letools.distributed.source import hdf5_source_spec
+
+        return hdf5_source_spec(source, config.mapping)
+
 
 __all__ = ["HDF5SourceConfig", "HDF5SourceProvider"]

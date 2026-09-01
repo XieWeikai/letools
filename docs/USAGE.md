@@ -52,6 +52,7 @@ letools doctor [environment|DATASET|check|fix|trim|score|gate|merge-check]
 letools visualizer setup [options]
 letools visualizer serve PATH_OR_REPO [options]
 letools tools hdf5-preset create|list|show ...
+letools dist plan|submit|status|worker|finalize ...
 ```
 
 All result-producing commands print JSON to standard output. `validate` and
@@ -443,7 +444,31 @@ Visualizer services can also run inside an interactive allocation. They do not
 use the conversion planner; forward the UI, data, and annotation ports described
 in [VISUALIZER.md](VISUALIZER.md).
 
-## 10. Python API
+## 10. Distributed conversion
+
+The distributed frontend creates a portable job on a shared POSIX filesystem,
+then runs the same idempotent worker under Local, Slurm, or Kubernetes:
+
+```bash
+letools dist plan SOURCE DESTINATION --to v3.0 \
+  --job-dir /shared/jobs/example --tasks 32 \
+  --workers 8 --video-workers 3
+letools dist submit /shared/jobs/example \
+  --scheduler slurm --max-parallel 8 --cpus-per-task 16 --memory 64G
+letools dist status /shared/jobs/example
+```
+
+Mapped HDF5 and AgileX plans accept the same provider-specific options as
+`convert`; HDF5 requires an explicit `--preset` because planning is
+non-interactive. Kubernetes submission additionally requires `--image` and
+normally a `--pvc-claim`. Use `--render-only` to inspect scheduler artifacts
+without invoking `sbatch` or `kubectl`.
+
+Task retry, state layout, publication guarantees, resource interpretation,
+Slurm/Kubernetes examples, limitations, and extension interfaces are documented
+in [DISTRIBUTED.md](DISTRIBUTED.md).
+
+## 11. Python API
 
 ### Fixed conversion
 
@@ -535,6 +560,33 @@ print(result.conversion)
 `plan_and_convert()` enables bounded calibration by default. `plan_conversion()`
 does not enable calibration unless requested explicitly.
 
+### Distributed plan and adapter
+
+```python
+from letools import (
+    LocalScheduler,
+    SourceSpec,
+    WorkerConfig,
+    plan_distributed_conversion,
+)
+
+plan = plan_distributed_conversion(
+    SourceSpec("lerobot", "/shared/source-v21"),
+    "/shared/output-v30",
+    "v3.0",
+    "/shared/jobs/output-v30",
+    task_count=32,
+    worker=WorkerConfig(workers=8, video_workers=3),
+)
+LocalScheduler(max_parallel=2).submit("/shared/jobs/output-v30")
+```
+
+The API also exports `SlurmScheduler`, `KubernetesScheduler`,
+`run_distributed_task()`, `try_finalize_distributed_job()`, and
+`distributed_status()`. SourceProvider implementations create portable HDF5 or
+AgileX specs for the CLI; Python callers may use `hdf5_source_spec()` and
+`agilex_source_spec()` directly.
+
 ### Validation and comparison
 
 ```python
@@ -554,7 +606,7 @@ if not comparison.equal:
     raise RuntimeError(comparison.errors)
 ```
 
-## 11. Convert HDF5 with a mapping preset
+## 12. Convert HDF5 with a mapping preset
 
 HDF5 has no universal robotics schema. The built-in source therefore requires a
 mapping. Create it interactively from a representative episode:
@@ -665,7 +717,7 @@ the source class and a SHA-256 of the complete mapping, so two semantic mappings
 cannot share a calibrated plan. The CLI constructs the same object from the
 selected preset before planning.
 
-## 12. Convert an AgileX directory
+## 13. Convert an AgileX directory
 
 The built-in AgileX source expects `episodeN` directories with these streams:
 
@@ -740,7 +792,7 @@ decoding and re-encoding and is the baseline performance mode, but output size
 is close to the source JPEG payload. Python callers can select a compact lossy
 codec with `ConversionConfig.video_encoding`.
 
-## 13. Custom source plugins and providers
+## 14. Custom source plugins and providers
 
 A custom input format can reuse both built-in output backends by implementing
 `DatasetSource`. No file registration is required when using the Python API:
@@ -823,7 +875,7 @@ it returns the common `DatasetSource` interface. The installed `letools` command
 currently registers built-ins in code and does not discover package entry
 points.
 
-## 14. Development setup
+## 15. Development setup
 
 Install test and native development groups:
 
@@ -865,7 +917,7 @@ Changes to external integrations must additionally run the pinned Visualizer's
 prepared cache. The exact workflow is automated in CI and documented in
 [THIRD_PARTY.md](THIRD_PARTY.md).
 
-## 15. Common failures
+## 16. Common failures
 
 ### `letools: command not found`
 

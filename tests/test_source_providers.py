@@ -9,11 +9,14 @@ from letools.source_providers import (
     AgileXSourceConfig,
     AgileXSourceProvider,
     HDF5SourceProvider,
+    LeRobotSourceConfig,
     LeRobotSourceProvider,
     SourceProviderContext,
     SourceProviderRegistry,
     source_providers,
 )
+from letools.plugins import HDF5Mapping, HDF5NumericField
+from letools.source_providers import HDF5SourceConfig
 
 
 def test_registry_resolves_canonical_names_and_aliases() -> None:
@@ -86,6 +89,25 @@ def test_provider_specific_help_and_legacy_preset_selection(capsys) -> None:
     assert args.source_format == "auto"
     assert args.preset == "fixture"
 
+    distributed = parse_cli_args(
+        [
+            "dist",
+            "plan",
+            "in",
+            "out",
+            "--source-format",
+            "agilex",
+            "--instruction",
+            "fold",
+            "--to",
+            "v3.0",
+            "--job-dir",
+            "job",
+        ]
+    )
+    assert isinstance(distributed._source_provider, AgileXSourceProvider)
+    assert distributed.instruction == "fold"
+
 
 def test_source_configs_are_immutable_and_validate_early() -> None:
     config = AgileXSourceConfig(" task ", fps=30, robot_type=" arm ")
@@ -96,3 +118,34 @@ def test_source_configs_are_immutable_and_validate_early() -> None:
         AgileXSourceConfig("  ")
     with pytest.raises(ValueError, match="FPS"):
         AgileXSourceConfig("task", fps=0)
+
+
+def test_providers_own_distributed_source_serialization(tmp_path) -> None:
+    lerobot = LeRobotSourceProvider().distributed_spec(
+        tmp_path / "dataset", LeRobotSourceConfig()
+    )
+    assert lerobot.kind == "lerobot"
+    assert lerobot.options == {}
+
+    agilex = AgileXSourceProvider().distributed_spec(
+        tmp_path / "raw", AgileXSourceConfig("fold", 20, "arm")
+    )
+    assert agilex.kind == "agilex"
+    assert agilex.options == {
+        "instruction": "fold",
+        "fps": 20,
+        "robot_type": "arm",
+    }
+
+    hdf5 = HDF5SourceProvider().distributed_spec(
+        tmp_path / "hdf5",
+        HDF5SourceConfig(
+            HDF5Mapping(
+                fps=30,
+                numeric_fields=(HDF5NumericField("action", "action"),),
+                default_task="fold",
+            )
+        ),
+    )
+    assert hdf5.kind == "hdf5"
+    assert hdf5.options["preset"]["mapping"]["default_task"] == "fold"

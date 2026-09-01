@@ -6,9 +6,12 @@ import argparse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from letools.plugins import DatasetSource
+
+if TYPE_CHECKING:
+    from letools.distributed.types import SourceSpec
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,18 @@ class SourceProvider(ABC, Generic[_ConfigT]):
         """Resolve frontend options and construct one source object."""
 
         return self.open(source, self.config_from_args(args, context))
+
+    def distributed_spec(self, source: Path, config: _ConfigT) -> SourceSpec:
+        """Serialize worker construction inputs for distributed conversion.
+
+        Providers that support the distributed frontend override this method.
+        Keeping source-specific serialization here prevents the CLI and task
+        protocol from accumulating format branches.
+        """
+
+        raise NotImplementedError(
+            f"Source provider {self.name!r} does not support distributed conversion"
+        )
 
 
 __all__ = ["SourceProvider", "SourceProviderContext"]

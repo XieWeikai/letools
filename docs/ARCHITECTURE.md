@@ -20,10 +20,12 @@ The implemented product boundary is intentionally narrow:
 - merge multiple physical same-version LeRobot datasets through a specialized path;
 - diagnose, repair, curate, and gate LeRobot datasets through pinned Doctor;
 - visualize local or Hub datasets through the pinned Hugging Face web application;
-- report environment capabilities and conversion stage timings.
+- report environment capabilities and conversion stage timings;
+- distribute conversion through Local, Slurm, or Kubernetes over shared POSIX
+  storage without coupling dataset semantics to a scheduler.
 
-It is not a training, robot-control, dataset-upload, distributed-conversion, or
-runtime autoscaling system. The CLI does not yet discover third-party source
+It is not a training, robot-control, dataset-upload, object-storage conversion,
+or runtime autoscaling system. The CLI does not yet discover third-party source
 plugins or third-party backends by entry point.
 
 ## 2. Component view
@@ -94,6 +96,13 @@ backend, or a planner consumer.
 The merge engine is also outside this diagram's conversion pipeline.
 Its permanently fixed LeRobot-to-same-LeRobot contract does not benefit from
 source plugins or generic backends and can exploit physical file identity.
+
+Distributed conversion composes the existing conversion and merge pipelines.
+It serializes source construction, presents each episode interval as a complete
+source, calls an unchanged backend for each task, and calls merge exactly once
+after all task commit records exist. Scheduler adapters remain outside all four
+format boundaries. See [DISTRIBUTED.md](DISTRIBUTED.md) for its component and
+deployment views.
 
 ## 3. Shared data model
 
@@ -170,6 +179,11 @@ because h5py serializes HDF5 C API calls inside one process.
 | `_io.py` | Small JSON/JSONL write primitives | Conversion orchestration |
 | `_native.py` | Capability detection and narrow PyO3 wrappers | Silent semantic differences |
 | `planner/*` | Static performance choices and supporting evidence | Conversion semantics or runtime adaptation |
+| `distributed/types.py` | Versioned source, task, plan, result, and submission protocols | Live source objects or scheduler syntax |
+| `distributed/source.py` | Portable source reopening and zero-based episode subset adaptation | Scheduling or target publication |
+| `distributed/state.py` | Atomic shared job state and POSIX finalization lock | Scheduler status or dataset semantics |
+| `distributed/executor.py` | Idempotent task conversion, coverage gate, final merge, publication | Slurm/Kubernetes submission syntax |
+| `distributed/schedulers.py` | Local launch, Slurm array, and Kubernetes Indexed Job submission | Source parsing, partitioning, or conversion policy |
 | `telemetry.py` | Thread-safe stage aggregation | Optimization decisions |
 | `validation.py` | Structural checks and semantic comparison | Repair or mutation |
 | `doctor.py` | Installed-provider report | Installation or environment mutation |
@@ -471,7 +485,28 @@ the same planner and then calls `convert()`. A cache hit skips bounded
 calibration, not source/dataset/storage inspection. See [PLANNER.md](PLANNER.md)
 for exact rules and limitations.
 
-## 15. Native acceleration boundary
+## 15. Distributed conversion boundary
+
+Distributed planning produces a versioned JSON `SourceSpec`, immutable
+contiguous `DistributedTask` intervals, and one `WorkerConfig`. A worker reopens
+the source from that description and wraps it in `EpisodeSubsetSource`, which
+delegates physical reads but makes generated indices local to the task. It then
+calls the ordinary transactional `convert()` function. This means distributed
+execution cannot silently diverge from local backend semantics.
+
+Completion is represented by an atomic task result in a shared `JobStore`, not
+by scheduler state. Every worker attempts finalization after committing; a
+POSIX advisory lock admits one process, which checks exact episode/frame
+coverage and invokes the specialized same-version merge engine. Publication
+retains the normal validation and overwrite gates.
+
+`SchedulerAdapter` receives only an existing job directory. Local, Slurm, and
+Kubernetes implementations choose how to launch indexed worker commands; they
+must not open sources, change task intervals, select conversion workers, or
+write the destination. The current shared-POSIX requirement is part of the
+state-store contract, not a Slurm assumption.
+
+## 16. Native acceleration boundary
 
 `_native.py` performs capability-based dispatch. Filesystem operations have a
 portable Python implementation. Video concat, split, and packet digests use
@@ -515,7 +550,7 @@ dataset staging tree. V3 writes its larger grouped shards directly into that
 tree and removes a partial shard on failure. In both cases the conversion
 coordinator remains the only dataset publication boundary.
 
-## 16. Validation boundary
+## 17. Validation boundary
 
 Conversion's built-in gate is shallow validation: metadata totals, contiguous
 episode indices, referenced files, Parquet row counts, and basic schema-shape
@@ -528,7 +563,7 @@ comparison hashes encoded packet payloads per episode and camera. It does not
 require byte-identical Parquet files or MP4 containers because both formats
 permit semantically equivalent physical layouts.
 
-## 17. Extension rules
+## 18. Extension rules
 
 When adding a source format, prefer a new `DatasetSource` that maps it into the
 existing model. Do not teach both LeRobot backends how to parse that format.
@@ -538,9 +573,11 @@ sources from forcing one Python callback per encoded frame.
 
 When that format needs CLI support, add an immutable source config and a
 `SourceProvider`, then register the provider. Do not add source-specific options
-or a source-type conditional to `cli.py`. Python-only custom sources do not need
-a provider: callers may continue to construct and pass `DatasetSource` objects
-directly.
+or a source-type conditional to `cli.py`. Providers that support distributed
+execution also implement `distributed_spec()` and place all reconstruction
+inputs in a portable `SourceSpec`. Python-only custom sources do not need a
+provider: callers may continue to construct and pass `DatasetSource` objects
+directly for local conversion.
 Promote a repeated operation into a reusable primitive only when it removes
 meaningful duplication or creates a measurable hot-path boundary.
 
@@ -553,7 +590,7 @@ Any performance change must preserve deep validation and bidirectional semantic
 comparison. Follow the [self-improvement protocol](../self-improve/PROTOCOL.md)
 for profiling, resource accounting, acceptance, and reporting.
 
-## 18. Code documentation conventions
+## 19. Code documentation conventions
 
 Every production Python module states its ownership boundary in a module
 docstring. Public classes, functions, abstract methods, plugin capabilities, and
@@ -569,7 +606,7 @@ why a boundary or invariant exists; they should not restate assignments or loop
 syntax. When behavior changes, the corresponding docstring and the user-facing
 architecture/usage document are reviewed in the same commit.
 
-## 19. External application boundary
+## 20. External application boundary
 
 ```text
                        letools CLI

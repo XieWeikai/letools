@@ -33,5 +33,12 @@ class LeRobotSourceProvider(SourceProvider[LeRobotSourceConfig]):
     def open(self, source: Path, config: LeRobotSourceConfig) -> DatasetSource:
         return open_dataset(source)
 
+    def distributed_spec(self, source: Path, config: LeRobotSourceConfig):
+        """Store only the absolute dataset root; workers auto-detect its version."""
+
+        from letools.distributed.types import SourceSpec
+
+        return SourceSpec("lerobot", str(source.resolve()))
+
 
 __all__ = ["LeRobotSourceConfig", "LeRobotSourceProvider"]

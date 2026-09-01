@@ -23,6 +23,7 @@ Detailed documentation:
 - [Architecture and module boundaries](docs/ARCHITECTURE.md)
 - [Static planner design](docs/PLANNER.md)
 - [Specialized merge engine](docs/MERGE.md)
+- [Distributed conversion architecture](docs/DISTRIBUTED.md)
 - [HDF5 source MVP acceptance](docs/HDF5_MVP.md)
 - [HDF5 mapping presets](docs/HDF5_PRESETS.md)
 - [AgileX source acceptance](docs/AGILEX.md)
@@ -128,7 +129,7 @@ close to the source JPEG size. Python callers can select compact MPEG-4 output
 through `VideoEncodingConfig`. HDF5 media jobs automatically use spawn-based
 process isolation to bypass h5py's process-wide native lock; `--video-workers`
 still controls the job count and no multiprocessing setup is required. See
-[detailed usage](docs/USAGE.md#8-python-api).
+[detailed usage](docs/USAGE.md#11-python-api).
 
 | Option | Meaning |
 | --- | --- |
@@ -311,6 +312,36 @@ sbatch --cpus-per-task=8 --mem=48G --wrap \
   'letools convert /data/v21 /data/v30 --to v3.0 --auto'
 ```
 
+### Distributed conversion
+
+For datasets large enough to use multiple nodes, create one immutable plan on
+shared storage and submit it through Local, Slurm, or Kubernetes adapters:
+
+```bash
+letools dist plan /shared/v21 /shared/v30 --to v3.0 \
+  --job-dir /shared/letools-jobs/v30 --tasks 64 \
+  --workers 8 --video-workers 3
+
+letools dist submit /shared/letools-jobs/v30 \
+  --scheduler slurm --max-parallel 8 \
+  --cpus-per-task 16 --memory 64G
+
+letools dist status /shared/letools-jobs/v30
+```
+
+Kubernetes uses the same plan and worker protocol through an Indexed Job:
+
+```bash
+letools dist submit /shared/letools-jobs/v30 \
+  --scheduler kubernetes --image ghcr.io/xieweikai/letools:VERSION \
+  --max-parallel 8 --pvc-claim shared-datasets --mount-path /shared
+```
+
+The MVP requires one shared POSIX namespace at identical absolute paths on all
+workers. Tasks are retry-safe and the last successful worker validates, merges,
+and atomically publishes the destination. See the
+[distributed design and complete command reference](docs/DISTRIBUTED.md).
+
 ## Python API
 
 ```python
@@ -335,7 +366,8 @@ print(merged.plan)
 The public API also exports `plan_conversion()`, `plan_and_convert()`,
 `validate_dataset()`, `compare_datasets()`, `open_dataset()`, the built-in
 LeRobot source classes, `AgileXSource`, `HDF5Source`, their typed source
-configuration classes, and the source-provider registry. The
+configuration classes, the source-provider registry, distributed plan/status
+types, and Local/Slurm/Kubernetes scheduler adapters. The
 [usage guide](docs/USAGE.md) contains complete Python examples, custom-source
 and provider requirements, result types, and validation behavior.
 
@@ -368,6 +400,13 @@ Same-version LeRobot paths -> specialized merge manifest
                         + bounded Rust clone/copy pool
                                       |
                          deep validation + publish
+
+Portable SourceSpec -> distributed task manifest -> SchedulerAdapter
+                              |                         |
+                     zero-based episode parts    Local / Slurm / K8s
+                              +------------+------------+
+                                           |
+                                  merge + validate + publish
 
 Physical/Hub dataset -> pinned Doctor -> checks, repair, score, and gates
 
