@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add a LeTools Data Source"
+  short_description: "Implement and validate a new source provider"
+  default_prompt: "Use $letools-add-source to add this source format without weakening LeTools contracts."
