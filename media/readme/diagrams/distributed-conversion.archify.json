@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Distributed Conversion Workflow",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "plan", "label": "Plan", "focus": ["request", "inspect", "plan"], "note": "Inspect the dataset and effective resource limits before any conversion work starts." },
+      { "id": "fanout", "label": "Fan out", "focus": ["plan", "partition", "dispatch", "parts"], "note": "Create immutable tasks, then submit independent part conversions through one scheduler adapter." },
+      { "id": "publish", "label": "Accept", "focus": ["parts", "assemble", "validate", "publish"], "note": "Assemble only successful parts and publish only after validation passes." }
+    ]
+  },
+  "lanes": [
+    { "id": "requester", "label": "User / API" },
+    { "id": "planning", "label": "Planner" },
+    { "id": "control", "label": "Coordinator" },
+    { "id": "scheduler", "label": "Scheduler Adapter" },
+    { "id": "workers", "label": "Cluster Workers" },
+    { "id": "acceptance", "label": "Acceptance" }
+  ],
+  "phases": [
+    { "id": "prepare", "label": "Prepare", "fromCol": 0, "toCol": 2, "variant": "emphasis" },
+    { "id": "execute", "label": "Execute", "fromCol": 3, "toCol": 4 },
+    { "id": "finish", "label": "Accept", "fromCol": 5, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["request", "inspect", "plan", "partition", "dispatch", "parts", "assemble", "validate", "publish"],
+  "semanticChecks": {
+    "allowedRoots": ["request"],
+    "allowedTerminals": ["publish"],
+    "requiredPaths": [
+      { "from": "request", "to": "publish" }
+    ]
+  },
+  "nodes": [
+    { "id": "request", "lane": "requester", "col": 0, "type": "frontend", "label": "Convert", "sublabel": "source → target", "width": 120 },
+    { "id": "inspect", "lane": "planning", "col": 1, "type": "cloud", "label": "Inspect", "sublabel": "data + resources", "width": 120 },
+    { "id": "plan", "lane": "planning", "col": 2, "type": "cloud", "label": "Plan", "sublabel": "static parameters", "width": 120 },
+    { "id": "partition", "lane": "control", "col": 3, "type": "messagebus", "label": "Partition", "sublabel": "immutable tasks", "width": 120 },
+    { "id": "dispatch", "lane": "scheduler", "col": 4, "type": "cloud", "label": "Dispatch", "sublabel": "Slurm · K8s · Local", "width": 128 },
+    { "id": "parts", "lane": "workers", "col": 5, "type": "backend", "label": "Convert Parts", "sublabel": "parallel + retryable", "width": 128 },
+    { "id": "assemble", "lane": "control", "col": 5, "type": "database", "label": "Assemble", "sublabel": "episode order", "width": 120 },
+    { "id": "validate", "lane": "acceptance", "col": 5, "type": "security", "label": "Validate", "sublabel": "data + media", "width": 120 },
+    { "id": "publish", "lane": "requester", "col": 5, "type": "database", "label": "Publish", "sublabel": "atomic rename", "width": 120 }
+  ],
+  "edges": [
+    { "id": "request-inspect", "from": "request", "to": "inspect", "role": "main", "variant": "emphasis" },
+    { "id": "inspect-plan", "from": "inspect", "to": "plan", "role": "main", "variant": "emphasis" },
+    { "id": "plan-partition", "from": "plan", "to": "partition", "role": "main", "variant": "emphasis" },
+    { "id": "partition-dispatch", "from": "partition", "to": "dispatch", "role": "main", "variant": "dashed" },
+    { "id": "dispatch-parts", "from": "dispatch", "to": "parts", "label": "fan out", "role": "async", "variant": "dashed" },
+    { "id": "parts-assemble", "from": "parts", "to": "assemble", "label": "valid parts", "role": "return", "variant": "dashed" },
+    { "id": "assemble-validate", "from": "assemble", "to": "validate", "role": "main", "variant": "security" },
+    { "id": "validate-publish", "from": "validate", "to": "publish", "label": "pass", "role": "main", "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Scheduler neutral", "items": ["The task manifest is independent of Slurm and Kubernetes", "Adapters translate the same resource request"] },
+    { "dot": "violet", "title": "Retryable parts", "items": ["Every worker produces one valid temporary dataset", "Completed parts can be reused after a task retry"] },
+    { "dot": "emerald", "title": "Transactional output", "items": ["Assembly preserves deterministic episode order", "Validation gates the final atomic publish"] }
+  ]
+}

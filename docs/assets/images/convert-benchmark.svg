@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 700" role="img" aria-labelledby="title description">
+  <title id="title">LeTools and official LeRobot conversion benchmark</title>
+  <desc id="description">LeTools is 4.51 times faster for LeRobot v2.1 to v3.0 conversion on the measured 300 episode workload.</desc>
+  <rect width="1600" height="700" rx="20" fill="#f7f8f5"/>
+  <text x="72" y="78" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="800" letter-spacing="0">v2.1 → v3.0 conversion benchmark</text>
+  <text x="72" y="122" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="24" letter-spacing="0">300 episodes · 239,314 frames · 900 videos · median of 3 · 8 CPU / 48 GiB · JuiceFS</text>
+  <g transform="translate(72 174)">
+    <rect width="1456" height="450" rx="12" fill="#ffffff" stroke="#d9ddd7" stroke-width="2"/>
+    <g transform="translate(42 40)">
+      <text x="0" y="0" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" letter-spacing="0">Throughput</text>
+      <text x="0" y="32" fill="#68736f" font-family="Arial, Helvetica, sans-serif" font-size="19" letter-spacing="0">episodes / second · higher is better</text>
+      <text x="0" y="101" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="0">LeRobot</text>
+      <rect x="105" y="76" width="113" height="34" rx="5" fill="#e4572e"/>
+      <text x="230" y="101" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="0">9.03</text>
+      <text x="0" y="167" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="0">LeTools</text>
+      <rect x="105" y="142" width="510" height="34" rx="5" fill="#168a82"/>
+      <text x="627" y="167" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="0">40.76</text>
+      <rect x="0" y="218" width="250" height="66" rx="8" fill="#1f2927"/>
+      <text x="125" y="260" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="800" letter-spacing="0">4.51× faster</text>
+    </g>
+    <path d="M760 36V414" stroke="#e2e5e1" stroke-width="2"/>
+    <g transform="translate(810 40)">
+      <text x="0" y="0" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" letter-spacing="0">Wall time</text>
+      <text x="0" y="32" fill="#68736f" font-family="Arial, Helvetica, sans-serif" font-size="19" letter-spacing="0">seconds · lower is better</text>
+      <text x="0" y="101" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="0">LeRobot</text>
+      <rect x="105" y="76" width="482" height="34" rx="5" fill="#e4572e"/>
+      <text x="599" y="101" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="0">33.22 s</text>
+      <text x="0" y="167" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="0">LeTools</text>
+      <rect x="105" y="142" width="107" height="34" rx="5" fill="#168a82"/>
+      <text x="224" y="167" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="0">7.36 s</text>
+      <text x="0" y="245" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" letter-spacing="0">Peak process RSS</text>
+      <text x="0" y="292" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="0">LeRobot</text>
+      <rect x="105" y="267" width="335" height="34" rx="5" fill="#e4572e"/>
+      <text x="452" y="292" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="0">670 MiB</text>
+      <text x="0" y="358" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="0">LeTools</text>
+      <rect x="105" y="333" width="168" height="34" rx="5" fill="#168a82"/>
+      <text x="285" y="358" fill="#1f2927" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" letter-spacing="0">336 MiB</text>
+    </g>
+  </g>
+  <circle cx="1130" cy="664" r="8" fill="#e4572e"/>
+  <text x="1148" y="671" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="0">official LeRobot d36d404</text>
+  <circle cx="1388" cy="664" r="8" fill="#168a82"/>
+  <text x="1406" y="671" fill="#56625f" font-family="Arial, Helvetica, sans-serif" font-size="20" letter-spacing="0">LeTools 0e417d9</text>
+</svg>

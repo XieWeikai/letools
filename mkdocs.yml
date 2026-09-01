@@ -49,6 +49,7 @@ nav:
       - LeTools: index.md
       - Installation: INSTALLATION.md
       - Complete usage: USAGE.md
+      - Performance: PERFORMANCE.md
   - Convert:
       - Conversion architecture: ARCHITECTURE.md
       - Static planner: PLANNER.md

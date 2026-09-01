@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "LeTools Architecture",
+    "quality_profile": "showcase",
+    "viewBox": [1150, 760],
+    "views": [
+      { "id": "convert-path", "label": "Convert path", "focus": ["entrypoints", "providers", "sources", "planner", "coordinator", "backends", "primitives"], "note": "Follow a local conversion from source-specific inputs to target-format output." },
+      { "id": "distributed-path", "label": "Distributed path", "focus": ["distributed", "schedulers", "workers", "shared-storage", "coordinator"], "note": "Portable tasks fan out through Slurm or Kubernetes and exchange valid parts on shared storage." },
+      { "id": "operations", "label": "Dataset operations", "focus": ["merge", "primitives", "tooling"], "note": "The specialized merge engine and integrated quality tools share native primitives." }
+    ]
+  },
+  "components": [
+    { "id": "entrypoints", "type": "frontend", "label": "CLI + Python API", "sublabel": "convert · plan · merge · tools", "pos": [30, 330], "size": [150, 72] },
+    { "id": "providers", "type": "backend", "label": "SourceProvider", "sublabel": "source-specific CLI inputs", "pos": [210, 330], "size": [150, 72] },
+    { "id": "sources", "type": "external", "label": "DatasetSource", "sublabel": "LeRobot · HDF5 · AgileX", "pos": [390, 330], "size": [150, 72] },
+    { "id": "planner", "type": "cloud", "label": "Static Planner", "sublabel": "CPU · memory · storage I/O", "pos": [570, 170], "size": [170, 72] },
+    { "id": "coordinator", "type": "backend", "label": "Conversion Coordinator", "sublabel": "group · stage · publish", "pos": [570, 330], "size": [170, 72] },
+    { "id": "backends", "type": "database", "label": "Format Backends", "sublabel": "LeRobot v2.1 · LeRobot v3.0", "pos": [770, 330], "size": [170, 72] },
+    { "id": "primitives", "type": "backend", "label": "Native Primitives", "sublabel": "Rust · Rayon · FFmpeg · PyArrow", "pos": [970, 330], "size": [160, 72] },
+    { "id": "distributed", "type": "messagebus", "label": "Distributed Planner", "sublabel": "partition manifest · immutable tasks", "pos": [210, 50], "size": [170, 72] },
+    { "id": "schedulers", "type": "cloud", "label": "Scheduler Adapters", "sublabel": "Slurm · Kubernetes · Local", "pos": [410, 50], "size": [170, 72] },
+    { "id": "workers", "type": "cloud", "label": "Cluster Workers", "sublabel": "independent part conversions", "pos": [610, 50], "size": [170, 72] },
+    { "id": "shared-storage", "type": "database", "label": "Shared Storage", "sublabel": "JuiceFS · NFS · Ceph · Lustre", "pos": [810, 50], "size": [170, 72] },
+    { "id": "merge", "type": "backend", "label": "Specialized Merge", "sublabel": "Parquet stream · byte-copy video", "pos": [770, 520], "size": [170, 72] },
+    { "id": "tooling", "type": "security", "label": "Quality + Inspection", "sublabel": "Validate · Compare · Doctor · Visualizer", "pos": [940, 600], "size": [190, 72] }
+  ],
+  "connections": [
+    { "id": "entry-provider", "from": "entrypoints", "to": "providers", "variant": "emphasis" },
+    { "id": "provider-source", "from": "providers", "to": "sources", "variant": "emphasis" },
+    { "id": "source-coordinator", "from": "sources", "to": "coordinator", "label": "episodes", "variant": "emphasis", "labelAt": [555, 316] },
+    { "id": "planner-coordinator", "from": "planner", "to": "coordinator", "label": "immutable plan", "variant": "emphasis", "labelAt": [655, 250] },
+    { "id": "coordinator-backend", "from": "coordinator", "to": "backends", "variant": "emphasis" },
+    { "id": "backend-native", "from": "backends", "to": "primitives", "variant": "emphasis" },
+    { "id": "distributed-scheduler", "from": "distributed", "to": "schedulers", "label": "task specs", "variant": "dashed", "labelAt": [395, 140] },
+    { "id": "scheduler-workers", "from": "schedulers", "to": "workers", "label": "submit", "variant": "dashed", "labelAt": [595, 36] },
+    { "id": "worker-storage", "from": "workers", "to": "shared-storage", "label": "parts", "variant": "dashed", "labelAt": [795, 36] },
+    { "id": "merge-native", "from": "merge", "to": "primitives", "label": "Arrow + file ops", "fromSide": "right", "toSide": "bottom", "labelAt": [965, 482] },
+    { "id": "native-tooling", "from": "primitives", "to": "tooling", "label": "validated output", "fromSide": "bottom", "toSide": "top", "labelAt": [970, 516] },
+    { "id": "storage-coordinator", "from": "shared-storage", "to": "coordinator", "label": "part datasets", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelAt": [800, 218] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Extensible conversion", "items": ["Providers own source-specific UX", "Backends own target-format policy"] },
+    { "dot": "emerald", "title": "Performance", "items": ["Rust handles packet and filesystem hot paths", "Planner respects CPU, memory, and storage"] },
+    { "dot": "violet", "title": "Operations", "items": ["Transactional staging before publish", "Scheduler-neutral distributed execution"] }
+  ]
+}
