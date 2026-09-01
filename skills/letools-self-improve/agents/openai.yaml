@@ -1,0 +1,4 @@
+interface:
+  display_name: "LeTools Self Improve"
+  short_description: "Run evidence-based performance iterations"
+  default_prompt: "Use $letools-self-improve to run a protocol-compliant optimization cycle."

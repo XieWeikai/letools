@@ -70,8 +70,10 @@ Open /data/all-v30 in the visualizer and give me the forwarding command.
 
 Codex users may explicitly invoke `$letools`; Claude Code users may invoke
 `/letools`. Use `$letools-add-source` or `/letools-add-source` when extending
-LeTools with a new input format. Canonical skill sources live under
-[`skills`](skills), with repository discovery links for both agents.
+LeTools with a new input format. Use `$letools-self-improve` or
+`/letools-self-improve` for protocol-driven optimization campaigns. Canonical
+skill sources live under [`skills`](skills), with repository discovery links
+for both agents.
 
 ## Use LeTools
 
