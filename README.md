@@ -6,6 +6,8 @@ supports lossless semantic conversion in both directions between LeRobot v2.1
 and v3.0, explicit mapping-driven HDF5 export, and timestamp-aligned AgileX
 directory export to either LeRobot version. It also has a specialized high-speed
 engine for merging multiple same-version LeRobot datasets.
+Pinned integrations add the complete LeRobot Doctor quality/curation suite and
+the Hugging Face Dataset Visualizer for local or Hub datasets.
 
 The public API consistently uses LeRobot's `episode` terminology. Python owns
 the plugin API and conversion plan; native Rust primitives accelerate work that
@@ -15,6 +17,9 @@ Detailed documentation:
 
 - [Usage guide](docs/USAGE.md)
 - [Installation and direct command setup](docs/INSTALLATION.md)
+- [Dataset Doctor](docs/DOCTOR.md)
+- [Dataset Visualizer](docs/VISUALIZER.md)
+- [External source and update policy](docs/THIRD_PARTY.md)
 - [Architecture and module boundaries](docs/ARCHITECTURE.md)
 - [Static planner design](docs/PLANNER.md)
 - [Specialized merge engine](docs/MERGE.md)
@@ -262,11 +267,33 @@ only when the requested checks are equal.
 
 ```bash
 letools doctor
+letools doctor check /data/dataset --max-episodes 20
+letools doctor check /data/dataset --ci --fail-on warn
 ```
 
-`doctor` reports the Python package, native provider and capabilities, PyAV's
-linked FFmpeg libraries, and any system `ffmpeg` executable. It is read-only and
-does not install or modify providers.
+With no arguments, `doctor` reports the Python package, native provider and
+capabilities, PyAV's linked FFmpeg libraries, system `ffmpeg`, and pinned
+external commits. Dataset arguments invoke the complete vendored Doctor: 12
+quality checks, JSON/Markdown/CI output, auto-repair, idle-frame trimming,
+episode scoring, policy gates, and merge compatibility. Preview `fix` and
+`trim` with `--dry-run`; see [the Doctor guide](docs/DOCTOR.md).
+
+### Visualizer
+
+Install the locked web dependencies once, then open a local path or Hub ID:
+
+```bash
+letools visualizer setup
+letools visualizer serve /data/dataset --open
+letools visualizer serve lerobot/pusht --open
+```
+
+The complete pinned Hugging Face UI includes synchronized cameras and charts,
+statistics, action insights, filtering, URDF views, annotations, and a Doctor
+tab. Local mode serves files directly from the dataset with byte-range support;
+it does not upload or copy the dataset. Bun is the one additional executable
+prerequisite. Setup, cache behavior, annotations, ports, Slurm forwarding, and
+security are detailed in [the Visualizer guide](docs/VISUALIZER.md).
 
 ### Slurm
 
@@ -336,6 +363,14 @@ Same-version LeRobot paths -> specialized merge manifest
                         + bounded Rust clone/copy pool
                                       |
                          deep validation + publish
+
+Physical/Hub dataset -> pinned Doctor -> checks, repair, score, and gates
+
+Local/Hub target -> letools Visualizer supervisor
+                         |
+             pinned Next.js UI + annotation API
+                         |
+           local Hub bridge + embedded Doctor
 ```
 
 Source providers own CLI option registration, typed configuration, and source
@@ -366,6 +401,11 @@ Merge deliberately does not use the plugin/backend path. Its permanently narrow
 same-version contract enables whole-file video copying and direct physical-layout
 rewrites. This separation also guarantees that merge development cannot regress
 conversion dispatch or third-party source behavior.
+
+Doctor and Visualizer are also separate from conversion. Their complete
+upstream implementations are pinned under `third_party/external`; thin letools
+adapters provide deterministic packaging, local-path access, process lifecycle,
+and CLI composition without adding branches to conversion or merge hot paths.
 
 The Rust boundary is deliberately coarse. Python passes paths and episode time
 ranges once per file; Rust owns open/demux/remux/hash/trailer/close and releases
@@ -464,4 +504,6 @@ correctness, resource, and acceptance rules.
 
 letools is released under the MIT License. FFmpeg and other dependencies retain
 their own licenses; bundled native release artifacts include the corresponding
-notices and build configuration.
+notices and build configuration. The pinned Doctor and Visualizer snapshots are
+Apache-2.0 and retain their upstream license files and provenance under
+`third_party/`; see [the external-source policy](docs/THIRD_PARTY.md).

@@ -7,6 +7,12 @@ performance evidence:
   validation, HDF5 mappings, custom sources, Slurm operation, and troubleshooting.
 - [Installation](INSTALLATION.md): direct command setup, uv tool internals,
   editable and locked development modes, updates, removal, and Slurm visibility.
+- [Dataset Doctor](DOCTOR.md): all 12 checks, CI output, repair, trim, scoring,
+  policy gates, merge checks, safety, and Visualizer embedding.
+- [Dataset Visualizer](VISUALIZER.md): local and Hub operation, Bun cache setup,
+  ports, annotations, Doctor, Slurm forwarding, security, and process design.
+- [External snapshots](THIRD_PARTY.md): immutable source policy, packaging,
+  patches, provenance, licenses, and the upstream update procedure.
 - [Architecture](ARCHITECTURE.md): module ownership, SourceProvider construction,
   two-stage CLI parsing, data flow, native acceleration, and extension points.
 - [Static planner](PLANNER.md): planner scope, resource and I/O inputs,
@@ -26,5 +32,7 @@ performance evidence:
 - [Self-improvement protocol](../self-improve/PROTOCOL.md): the required process
   for accepting future performance changes.
 
-Start with the usage guide when operating the tool. Read the architecture and
-planner documents before changing module contracts or performance policy.
+Start with the usage guide when operating conversion or merge. Use the Doctor
+and Visualizer guides for inspection and curation. Read the architecture,
+external-source, and planner documents before changing module contracts,
+upstream pins, or performance policy.

@@ -14,8 +14,9 @@ letools doctor
 `uv tool install` creates an isolated runtime environment and publishes the
 project's `letools` console script in the XDG user executable directory, normally
 `$HOME/.local/bin`. It does not require root access or activation of a virtual
-environment. The environment includes PyAV, PyArrow, HDF5 support, NumPy, and the
-matching `letools-native` wheel declared by the project.
+environment. The environment includes PyAV, PyArrow, HDF5 support, NumPy, the
+matching `letools-native` wheel, the pinned Doctor package, and the Visualizer
+annotation dependencies declared by the project.
 
 If the shell cannot find the new command, run this once and start a new shell:
 
@@ -149,6 +150,14 @@ a path visible from compute nodes. A standalone `uv tool install .` does not nee
 the checkout at runtime. Neither mode installs system packages or modifies FFmpeg
 environment variables; runtime provider selection remains the behavior described
 in [Architecture](ARCHITECTURE.md).
+
+The Visualizer has one additional executable prerequisite: Bun. It can be a
+system or user installation discovered through `PATH`, or selected with
+`letools visualizer setup --bun /path/to/bun`. The first setup installs the
+exact JavaScript dependency graph into the XDG user cache; the Python package
+and immutable upstream source are already included by `uv tool install`.
+Compute nodes must see the Bun path and cache, or use a shared `--cache-dir`.
+See [Dataset Visualizer](VISUALIZER.md) for setup and port forwarding.
 
 The CI user-install job reproduces both command-publication paths: it runs
 `uv tool install .` followed by direct `letools doctor`, then creates and removes

@@ -22,3 +22,6 @@ The Apache-2.0 license text used by both current snapshots is archived at
 `licenses/Apache-2.0.txt`. Each upstream project's own README and license files
 are retained when supplied by upstream.
 
+Repository-wide integration boundaries, wheel packaging, and the acceptance
+matrix are documented in `docs/THIRD_PARTY.md`. User commands and runtime
+behavior are documented in `docs/DOCTOR.md` and `docs/VISUALIZER.md`.

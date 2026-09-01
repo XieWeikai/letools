@@ -48,7 +48,9 @@ letools plan SOURCE DESTINATION --to VERSION [options]
 letools merge SOURCE... --output DESTINATION [options]
 letools validate DATASET [--deep]
 letools compare LEFT RIGHT [--skip-data] [--videos]
-letools doctor
+letools doctor [environment|DATASET|check|fix|trim|score|gate|merge-check]
+letools visualizer setup [options]
+letools visualizer serve PATH_OR_REPO [options]
 letools tools hdf5-preset create|list|show ...
 ```
 
@@ -57,6 +59,10 @@ All result-producing commands print JSON to standard output. `validate` and
 different result. Parsing and execution failures return a nonzero status.
 
 Accepted target spellings are `v2.1`, `2.1`, `v3.0`, and `3.0`.
+
+`letools doctor` with no arguments is the environment report. Doctor dataset
+commands and the web Visualizer are documented in [DOCTOR.md](DOCTOR.md) and
+[VISUALIZER.md](VISUALIZER.md); both use pinned upstream implementations.
 
 ## 3. Convert a dataset
 
@@ -376,7 +382,35 @@ letools validate /data/converted --deep
 letools compare /data/original /data/converted --videos
 ```
 
-## 8. Run under Slurm
+## 8. Diagnose, repair, and visualize
+
+Run the complete dataset quality suite or its CI representation:
+
+```bash
+letools doctor check /data/dataset
+letools doctor check /data/dataset --max-episodes 20 --ci --fail-on warn
+```
+
+Doctor also supplies previewable repair/trim operations, episode scoring,
+training-policy gates, and merge compatibility checks. These commands are
+delegated to the pinned upstream package; start mutating operations with
+`--dry-run`. See [DOCTOR.md](DOCTOR.md) for every command, check, exit rule, and
+safety boundary.
+
+Prepare and serve the pinned web application:
+
+```bash
+letools visualizer setup
+letools visualizer serve /data/dataset
+letools visualizer serve lerobot/pusht
+```
+
+Local mode supplies Hub-compatible metadata/Parquet/video access, embedded
+Doctor HTML/JSON, and the upstream annotation backend. The startup JSON prints
+the exact UI and service origins. See [VISUALIZER.md](VISUALIZER.md) for Bun,
+ports, Slurm forwarding, production mode, annotations, and security.
+
+## 9. Run under Slurm
 
 Plan and convert inside the allocation whose resources should be detected.
 Running `plan` on a login node and converting inside Slurm produces a different
@@ -405,7 +439,11 @@ cgroup cpusets, and Slurm. It similarly respects host, cgroup, and Slurm memory
 limits. Request resources from Slurm first; the planner never submits jobs or
 changes the allocation.
 
-## 9. Python API
+Visualizer services can also run inside an interactive allocation. They do not
+use the conversion planner; forward the UI, data, and annotation ports described
+in [VISUALIZER.md](VISUALIZER.md).
+
+## 10. Python API
 
 ### Fixed conversion
 
@@ -516,7 +554,7 @@ if not comparison.equal:
     raise RuntimeError(comparison.errors)
 ```
 
-## 10. Convert HDF5 with a mapping preset
+## 11. Convert HDF5 with a mapping preset
 
 HDF5 has no universal robotics schema. The built-in source therefore requires a
 mapping. Create it interactively from a representative episode:
@@ -627,7 +665,7 @@ the source class and a SHA-256 of the complete mapping, so two semantic mappings
 cannot share a calibrated plan. The CLI constructs the same object from the
 selected preset before planning.
 
-## 11. Convert an AgileX directory
+## 12. Convert an AgileX directory
 
 The built-in AgileX source expects `episodeN` directories with these streams:
 
@@ -702,7 +740,7 @@ decoding and re-encoding and is the baseline performance mode, but output size
 is close to the source JPEG payload. Python callers can select a compact lossy
 codec with `ConversionConfig.video_encoding`.
 
-## 12. Custom source plugins and providers
+## 13. Custom source plugins and providers
 
 A custom input format can reuse both built-in output backends by implementing
 `DatasetSource`. No file registration is required when using the Python API:
@@ -785,7 +823,7 @@ it returns the common `DatasetSource` interface. The installed `letools` command
 currently registers built-ins in code and does not discover package entry
 points.
 
-## 13. Development setup
+## 14. Development setup
 
 Install test and native development groups:
 
@@ -793,6 +831,8 @@ Install test and native development groups:
 uv sync --locked --group test --group native-dev
 ./scripts/link_letools.sh --no-sync
 uv run pytest -q
+PYTHONPATH=third_party/external/lerobot-doctor/src \
+  uv run pytest -q third_party/external/lerobot-doctor/tests
 cargo test --manifest-path native/Cargo.toml --locked
 cargo clippy --manifest-path native/Cargo.toml --locked -- -D warnings
 ```
@@ -820,7 +860,12 @@ uv run maturin develop \
 Normal users should not set these variables. Release wheels carry their own
 runtime dependencies and relative rpaths.
 
-## 14. Common failures
+Changes to external integrations must additionally run the pinned Visualizer's
+`bun test`, type-check, lint, format check, and production build from the
+prepared cache. The exact workflow is automated in CI and documented in
+[THIRD_PARTY.md](THIRD_PARTY.md).
+
+## 15. Common failures
 
 ### `letools: command not found`
 

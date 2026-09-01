@@ -18,6 +18,8 @@ The implemented product boundary is intentionally narrow:
 - validate one dataset and compare two datasets semantically;
 - choose a static conversion configuration before execution;
 - merge multiple physical same-version LeRobot datasets through a specialized path;
+- diagnose, repair, curate, and gate LeRobot datasets through pinned Doctor;
+- visualize local or Hub datasets through the pinned Hugging Face web application;
 - report environment capabilities and conversion stage timings.
 
 It is not a training, robot-control, dataset-upload, distributed-conversion, or
@@ -83,7 +85,13 @@ model and reusable primitives. The shared model never depends on a physical
 LeRobot version. The planner produces `ConversionConfig`; it does not call
 backend internals or change dataset semantics.
 
-The merge engine is intentionally outside this diagram's conversion pipeline.
+Doctor, Visualizer, and the merge engine are intentionally outside this
+diagram's conversion pipeline. Doctor consumes physical datasets through its
+own diagnostic model. Visualizer reads physical files through Hub-compatible
+HTTP and its browser-side Parquet/video stack. Neither is a `DatasetSource`, a
+backend, or a planner consumer.
+
+The merge engine is also outside this diagram's conversion pipeline.
 Its permanently fixed LeRobot-to-same-LeRobot contract does not benefit from
 source plugins or generic backends and can exploit physical file identity.
 
@@ -165,6 +173,12 @@ because h5py serializes HDF5 C API calls inside one process.
 | `telemetry.py` | Thread-safe stage aggregation | Optimization decisions |
 | `validation.py` | Structural checks and semantic comparison | Repair or mutation |
 | `doctor.py` | Installed-provider report | Installation or environment mutation |
+| `doctor_external.py` | Exact upstream Doctor CLI delegation | Reimplemented checks or repair policy |
+| `external.py` | Checkout/wheel resource resolution and provenance | Upstream mutation or execution policy |
+| `visualizer.py` | App cache, patch/install fingerprints, target adapters, process lifecycle | Browser feature implementation or conversion |
+| `visualizer_server.py` | Confined local Hub routes, Range I/O, embedded Doctor report | General file serving or dataset rewriting |
+| `third_party/external/` | Immutable complete upstream snapshots | LeTools-owned edits |
+| `third_party/patches/` | Reviewable transformations applied to cache copies | Runtime state or generated dependencies |
 | `native/` | Parallel file primitives and optional FFmpeg hot paths | Python model or planner policy |
 
 ## 5. Source provider contract
@@ -554,3 +568,46 @@ compatibility, or a deliberate compatibility adapter. Comments should explain
 why a boundary or invariant exists; they should not restate assignments or loop
 syntax. When behavior changes, the corresponding docstring and the user-facing
 architecture/usage document are reviewed in the same commit.
+
+## 19. External application boundary
+
+```text
+                       letools CLI
+                    /               \
+          doctor environment       visualizer setup/serve
+                  |                         |
+        letools provider report      provenance + fingerprint
+                  |                         |
+      dataset args delegated          immutable Visualizer snapshot
+                  |                         |
+       vendored Doctor package       cache copy + reviewed patch
+                  |                    /          |          \
+        physical/Hub dataset    local HTTP   annotation API   Next.js
+                                  |                |             |
+                             local files      v3 rewrites     browser UI
+                                  |
+                           Doctor HTML/JSON
+```
+
+`third_party/UPSTREAM.toml` is the source of truth for repository, commit,
+retrieval date, license, and integration purpose. The Python wheel includes the
+Doctor package plus Visualizer source, lockfile, patch, provenance, and license.
+An installed wheel is never changed: Visualizer preparation copies source into
+an XDG cache and atomically replaces that copy only when its fingerprint changes.
+
+Doctor's CLI owns dataset parsing, checks, output, repair semantics, and exit
+codes. LeTools reserves only the no-argument/environment command and otherwise
+delegates the raw argument vector. This prevents a second parser or a partial
+feature mirror from drifting from upstream.
+
+Visualizer's UI and annotation implementation remain upstream. LeTools owns the
+missing integration concerns: deterministic setup, local-path identity, strict
+root confinement, HTTP byte ranges, embedded local Doctor, configuration, and
+child-process cleanup. Its one source patch makes the Doctor origin configurable
+so local targets can use the bundled Doctor rather than a remote Space.
+
+These integrations do not import conversion coordinator, planner, backends, or
+Rust media primitives. Consequently their presence adds installation size and
+optional runtime dependencies, but no branches or overhead to conversion and
+merge hot paths. See [external policy](THIRD_PARTY.md), [Doctor](DOCTOR.md), and
+[Visualizer](VISUALIZER.md) for update and operational details.
