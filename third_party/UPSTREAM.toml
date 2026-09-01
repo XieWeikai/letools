@@ -1,0 +1,22 @@
+schema = 1
+
+[[project]]
+name = "lerobot-doctor"
+path = "third_party/external/lerobot-doctor"
+repository = "https://github.com/jashshah999/lerobot-doctor"
+commit = "ff9475332cec755eb61a03b30273cc12dccddc28"
+retrieved = "2026-09-01"
+license = "Apache-2.0"
+license_file = "third_party/licenses/Apache-2.0.txt"
+integration = "Bundled Python package exposed through `letools doctor`."
+
+[[project]]
+name = "lerobot-dataset-visualizer"
+path = "third_party/external/lerobot-dataset-visualizer"
+repository = "https://github.com/huggingface/lerobot-dataset-visualizer"
+commit = "dc59887796fd41f37040c0df6b10e6f6a30a1854"
+retrieved = "2026-09-01"
+license = "Apache-2.0"
+license_file = "third_party/external/lerobot-dataset-visualizer/LICENSE"
+integration = "Cached Bun/Next.js application exposed through `letools visualizer`."
+

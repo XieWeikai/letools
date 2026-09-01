@@ -1,0 +1,48 @@
+From: letools integration <xxxweikai@gmail.com>
+Subject: [PATCH] Allow an embedding host to select the Doctor service
+
+The upstream application hard-codes its public Doctor Space. LeTools needs the
+same tab to diagnose a local dataset without uploading it, so make only the
+service origin configurable. The public Space remains the default.
+---
+ src/app/[org]/[dataset]/[episode]/episode-viewer.tsx | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/[org]/[dataset]/[episode]/episode-viewer.tsx b/src/app/[org]/[dataset]/[episode]/episode-viewer.tsx
+index ace345c..e17067e 100644
+--- a/src/app/[org]/[dataset]/[episode]/episode-viewer.tsx
++++ b/src/app/[org]/[dataset]/[episode]/episode-viewer.tsx
+@@ -250,6 +250,13 @@ function EpisodeViewerInner({
+     task,
+   } = data;
+ 
++  const doctorBaseUrl = (
++    process.env.NEXT_PUBLIC_LEROBOT_DOCTOR_URL ||
++    "https://jashshah999-lerobot-doctor.hf.space"
++  ).replace(/\/$/, "");
++  const doctorDataset = encodeURIComponent(`${org}/${dataset}`);
++  const doctorUrl = `${doctorBaseUrl}/?dataset=${doctorDataset}`;
++
+   const [videosReady, setVideosReady] = useState(!videosInfo.length);
+   const [chartsReady, setChartsReady] = useState(false);
+ 
+@@ -831,7 +838,7 @@ function EpisodeViewerInner({
+                   lerobot-doctor
+                 </a>
+                 <a
+-                  href={`https://jashshah999-lerobot-doctor.hf.space/?dataset=${org}/${dataset}`}
++                  href={doctorUrl}
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   className="underline hover:text-slate-200"
+@@ -840,7 +847,7 @@ function EpisodeViewerInner({
+                 </a>
+               </div>
+               <iframe
+-                src={`https://jashshah999-lerobot-doctor.hf.space/?dataset=${org}/${dataset}`}
++                src={doctorUrl}
+                 title="lerobot-doctor"
+                 className="flex-1 w-full rounded border border-slate-700 bg-white"
+                 sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+-- 
+2.43.0
