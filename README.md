@@ -56,6 +56,22 @@ uses the packaged Rust/FFmpeg hot path. Other supported platforms select the
 portable PyAV path automatically. See [Installation](docs/INSTALLATION.md) for
 developer builds, wheel behavior, and existing non-recursive clones.
 
+### Use LeTools through an agent
+
+The repository includes a cross-compatible `letools` Agent Skill. Codex and
+Claude Code discover it automatically when launched anywhere inside this
+checkout. Ask naturally, for example:
+
+```text
+Convert /data/fold-v21 to v3.0 using the current Slurm allocation, then validate it.
+Merge these three v3.0 datasets into /data/all-v30 and report throughput.
+Open /data/all-v30 in the visualizer and give me the forwarding command.
+```
+
+Codex users may explicitly invoke `$letools`; Claude Code users may invoke
+`/letools`. The canonical skill is under [`skills/letools`](skills/letools),
+with repository discovery links for both agents.
+
 ## Use LeTools
 
 Convert between LeRobot layouts and let the planner tune the run:

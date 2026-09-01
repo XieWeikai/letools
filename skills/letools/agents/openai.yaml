@@ -1,0 +1,4 @@
+interface:
+  display_name: "LeTools Dataset Operations"
+  short_description: "Plan and operate LeRobot datasets safely"
+  default_prompt: "Use $letools to inspect and complete this LeRobot dataset operation."
