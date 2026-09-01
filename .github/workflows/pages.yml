@@ -1,0 +1,73 @@
+name: Documentation and package index
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [native-release]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Native release tag to index; empty selects the latest native release
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      REQUESTED_RELEASE_TAG: ${{ github.event.client_payload.tag || inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.6"
+          enable-cache: true
+      - name: Build documentation
+        run: >-
+          uvx --from mkdocs==1.6.1 --with mkdocs-material==9.7.7
+          mkdocs build --strict --site-dir site
+      - name: Resolve native release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${REQUESTED_RELEASE_TAG}"
+          if [[ -z "${tag}" ]]; then
+            tag="$(gh release list --limit 100 --json tagName \
+              --jq '[.[] | select(.tagName | startswith("native-v"))][0].tagName')"
+          fi
+          if [[ -z "${tag}" || "${tag}" == "null" ]]; then
+            echo "No native release is available" >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+      - name: Download released wheels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release download "${{ steps.release.outputs.tag }}"
+          --pattern 'letools_native-*.whl' --dir dist
+      - name: Add Python package index
+        run: >-
+          python scripts/build_simple_index.py dist site
+          "${GITHUB_REPOSITORY}" "${{ steps.release.outputs.tag }}"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - name: Deploy documentation and package index
+        id: deployment
+        uses: actions/deploy-pages@v4

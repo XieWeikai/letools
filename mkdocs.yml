@@ -1,0 +1,101 @@
+site_name: LeTools
+site_description: High-performance tools for creating, converting, merging, and validating LeRobot datasets
+site_url: https://xieweikai.github.io/letools/
+repo_url: https://github.com/XieWeikai/letools
+repo_name: XieWeikai/letools
+edit_uri: edit/main/docs/
+exclude_docs: |
+  README.md
+
+theme:
+  name: material
+  language: en
+  font: false
+  icon:
+    logo: material/database-cog-outline
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Use dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Use light mode
+  features:
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+
+nav:
+  - Overview:
+      - LeTools: index.md
+      - Installation: INSTALLATION.md
+      - Complete usage: USAGE.md
+  - Convert:
+      - Conversion architecture: ARCHITECTURE.md
+      - Static planner: PLANNER.md
+      - Planner benchmarks: PLANNER_BENCHMARK.md
+      - Distributed conversion: DISTRIBUTED.md
+  - Sources:
+      - HDF5 mapping presets: HDF5_PRESETS.md
+      - HDF5 acceptance: HDF5_MVP.md
+      - AgileX source: AGILEX.md
+  - Dataset Operations:
+      - Merge datasets: MERGE.md
+      - Dataset Doctor: DOCTOR.md
+      - Dataset Visualizer: VISUALIZER.md
+  - Development:
+      - External submodules: THIRD_PARTY.md
+
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/XieWeikai/letools
+      name: LeTools on GitHub
+  generator: false
+
+copyright: Copyright &copy; 2026 Weikai Xie. Released under the MIT License.

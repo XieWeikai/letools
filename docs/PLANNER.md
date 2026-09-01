@@ -343,4 +343,4 @@ Planner correctness and performance are tested separately:
 The executed matrix, regret definitions, resource accounting, and current
 results are retained in [PLANNER_BENCHMARK.md](PLANNER_BENCHMARK.md). Future
 performance changes must also follow the
-[self-improvement protocol](../self-improve/PROTOCOL.md).
+[self-improvement protocol](https://github.com/XieWeikai/letools/blob/main/self-improve/PROTOCOL.md).

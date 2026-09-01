@@ -587,7 +587,8 @@ should depend on format-neutral profiles and execution parameters, not inspect
 backend private objects.
 
 Any performance change must preserve deep validation and bidirectional semantic
-comparison. Follow the [self-improvement protocol](../self-improve/PROTOCOL.md)
+comparison. Follow the
+[self-improvement protocol](https://github.com/XieWeikai/letools/blob/main/self-improve/PROTOCOL.md)
 for profiling, resource accounting, acceptance, and reporting.
 
 ## 19. Code documentation conventions

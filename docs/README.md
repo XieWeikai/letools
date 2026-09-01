@@ -1,5 +1,10 @@
 # letools documentation
 
+The rendered documentation is published at
+[xieweikai.github.io/letools](https://xieweikai.github.io/letools/). This
+directory remains the source of truth for both the website and repository
+Markdown links.
+
 This directory separates user-facing operation from implementation design and
 performance evidence:
 

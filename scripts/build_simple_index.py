@@ -30,10 +30,12 @@ def main() -> None:
         links.append(f'<a href="{html.escape(url)}">{html.escape(wheel.name)}</a>')
     page = "<!doctype html>\n<html><body>\n" + "<br>\n".join(links) + "\n</body></html>\n"
     (package_dir / "index.html").write_text(page, encoding="utf-8")
-    (output_dir / "index.html").write_text(
-        '<!doctype html>\n<a href="simple/letools-native/">letools-native</a>\n',
-        encoding="utf-8",
-    )
+    root_index = output_dir / "index.html"
+    if not root_index.exists():
+        root_index.write_text(
+            '<!doctype html>\n<a href="simple/letools-native/">letools-native</a>\n',
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":
