@@ -135,10 +135,13 @@ scheduling remain separate paths so their specialized behavior does not add
 branches to conversion hot loops.
 
 <p align="center">
-  <img src="media/readme/letools-architecture.png" alt="LeTools conversion, merge, planner, distributed scheduler, validation, Doctor, and Visualizer architecture" width="100%">
+  <a href="https://xieweikai.github.io/letools/assets/diagrams/letools-architecture.html">
+    <img src="media/readme/letools-architecture.png" alt="LeTools conversion, merge, planner, distributed scheduler, validation, Doctor, and Visualizer architecture" width="100%">
+  </a>
 </p>
 
-The architecture image was generated from the checked-in
+Click the image to open the interactive Archify viewer. The architecture image
+was generated from the checked-in
 [Archify source](media/readme/diagrams/letools-architecture.archify.json).
 The [architecture reference](docs/ARCHITECTURE.md) defines every public module,
 ownership boundary, source-provider contract, backend contract, and native
@@ -153,7 +156,9 @@ valid part on shared POSIX storage, and the last successful worker takes a lock,
 merges, validates, and atomically publishes.
 
 <p align="center">
-  <img src="media/readme/distributed-conversion.png" alt="Distributed LeTools conversion workflow from inspection through validation and publication" width="100%">
+  <a href="https://xieweikai.github.io/letools/assets/diagrams/distributed-conversion.html">
+    <img src="media/readme/distributed-conversion.png" alt="Distributed LeTools conversion workflow from inspection through validation and publication" width="100%">
+  </a>
 </p>
 
 ```bash
@@ -168,7 +173,8 @@ letools dist submit /shared/letools-jobs/v30 \
 letools dist status /shared/letools-jobs/v30
 ```
 
-The same plan can be submitted as a Kubernetes Indexed Job with
+Click the workflow image to open the interactive Archify viewer. The same plan
+can be submitted as a Kubernetes Indexed Job with
 `--scheduler kubernetes`. The MVP requires source, job, and destination paths
 to be visible at identical absolute paths on all workers. See the
 [distributed architecture and operations guide](docs/DISTRIBUTED.md) and its
