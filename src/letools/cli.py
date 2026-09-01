@@ -11,6 +11,7 @@ from typing import Any
 
 from letools.conversion import ConversionConfig, convert
 from letools.doctor import environment_report
+from letools.doctor_external import run_doctor
 from letools.merge import merge_datasets, plan_merge
 from letools.planner import (
     CalibrationOptions,
@@ -29,6 +30,11 @@ from letools.tools.hdf5_tui import (
     run_hdf5_preset_wizard,
 )
 from letools.validation import compare_datasets, validate_dataset
+from letools.visualizer import (
+    VisualizerConfig,
+    prepare_visualizer,
+    serve_visualizer,
+)
 
 
 def _json_default(value: Any) -> Any:
@@ -125,7 +131,49 @@ def build_parser(
     merging.add_argument("--no-cache", action="store_true")
     merging.add_argument("--overwrite", action="store_true")
     merging.add_argument("--no-validate", action="store_true")
-    commands.add_parser("doctor", help="Report native and FFmpeg providers")
+    commands.add_parser(
+        "doctor",
+        help="Report the environment or run dataset quality/curation commands",
+        description=(
+            "With no arguments, report the letools environment. Dataset commands "
+            "are: check, fix, trim, score, gate, and merge-check."
+        ),
+    )
+    visualizer = commands.add_parser(
+        "visualizer",
+        help="Set up or run the integrated LeRobot Dataset Visualizer",
+    )
+    visualizer_commands = visualizer.add_subparsers(
+        dest="visualizer_command", required=True
+    )
+    visualizer_setup = visualizer_commands.add_parser(
+        "setup", help="Prepare the pinned application and install locked Bun dependencies"
+    )
+    visualizer_setup.add_argument("--cache-dir", type=Path)
+    visualizer_setup.add_argument("--bun")
+    visualizer_setup.add_argument("--force", action="store_true")
+    visualizer_serve = visualizer_commands.add_parser(
+        "serve", help="Run the visualizer for a local path or Hub org/dataset"
+    )
+    visualizer_serve.add_argument("target")
+    visualizer_serve.add_argument("--host", default="127.0.0.1")
+    visualizer_serve.add_argument("--port", type=int, default=3000)
+    visualizer_serve.add_argument("--data-port", type=int, default=8765)
+    visualizer_serve.add_argument("--annotation-port", type=int, default=7861)
+    visualizer_serve.add_argument("--public-data-url")
+    visualizer_serve.add_argument("--public-annotation-url")
+    visualizer_serve.add_argument("--no-annotations", action="store_true")
+    visualizer_serve.add_argument(
+        "--doctor-max-episodes",
+        type=int,
+        default=20,
+        help="local Doctor sample size; 0 scans all episodes",
+    )
+    visualizer_serve.add_argument("--production", action="store_true")
+    visualizer_serve.add_argument("--open", action="store_true", dest="open_browser")
+    visualizer_serve.add_argument("--cache-dir", type=Path)
+    visualizer_serve.add_argument("--bun")
+    visualizer_serve.add_argument("--force-setup", action="store_true")
     utilities = commands.add_parser("tools", help="Run auxiliary dataset utilities")
     utility_commands = utilities.add_subparsers(dest="tool", required=True)
     hdf5_preset = utility_commands.add_parser(
@@ -174,7 +222,20 @@ def parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     """Dispatch one CLI command and return a process exit status."""
 
-    args = parse_cli_args(argv)
+    tokens = list(sys.argv[1:] if argv is None else argv)
+    # Preserve the original no-argument environment report while delegating
+    # every dataset operation to the complete vendored Doctor CLI. This early
+    # dispatch also preserves upstream parsing, help text, and exit semantics.
+    if tokens and tokens[0] == "doctor" and len(tokens) > 1:
+        if tokens[1] == "environment":
+            if len(tokens) != 2:
+                print("letools doctor environment takes no arguments", file=sys.stderr)
+                return 2
+            print(json.dumps(environment_report(), indent=2))
+            return 0
+        return run_doctor(tokens[1:])
+
+    args = parse_cli_args(tokens)
     if args.command == "tools":
         if args.preset_command == "create":
             preset, path = run_hdf5_preset_wizard(
@@ -202,6 +263,37 @@ def main(argv: list[str] | None = None) -> int:
         ]
         print(json.dumps(summaries, indent=2))
         return 0
+    if args.command == "visualizer":
+        if args.visualizer_command == "setup":
+            _print(
+                prepare_visualizer(
+                    cache_dir=args.cache_dir,
+                    bun=args.bun,
+                    force=args.force,
+                )
+            )
+            return 0
+        if args.doctor_max_episodes < 0:
+            print("--doctor-max-episodes cannot be negative", file=sys.stderr)
+            return 2
+        return serve_visualizer(
+            args.target,
+            VisualizerConfig(
+                host=args.host,
+                port=args.port,
+                data_port=args.data_port,
+                annotation_port=args.annotation_port,
+                public_data_url=args.public_data_url,
+                public_annotation_url=args.public_annotation_url,
+                annotations=not args.no_annotations,
+                doctor_max_episodes=args.doctor_max_episodes or None,
+                production=args.production,
+                open_browser=args.open_browser,
+                cache_dir=args.cache_dir,
+                bun=args.bun,
+                force_setup=args.force_setup,
+            ),
+        )
     if args.command == "convert":
         source = _open_cli_source(args)
         if args.auto:

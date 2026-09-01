@@ -12,7 +12,24 @@ diff --git a/src/app/[org]/[dataset]/[episode]/episode-viewer.tsx b/src/app/[org
 index ace345c..e17067e 100644
 --- a/src/app/[org]/[dataset]/[episode]/episode-viewer.tsx
 +++ b/src/app/[org]/[dataset]/[episode]/episode-viewer.tsx
-@@ -250,6 +250,13 @@ function EpisodeViewerInner({
+@@ -233,40 +233,47 @@ function EpisodeBootstrap({ data }: { data: EpisodeData }) {
+ }
+ 
+ function EpisodeViewerInner({
+   data,
+   org,
+   dataset,
+ }: {
+   data: EpisodeData;
+   org?: string;
+   dataset?: string;
+ }) {
+   const {
+     datasetInfo,
+     episodeId,
+     videosInfo,
+     chartDataGroups,
+     episodes,
      task,
    } = data;
  
@@ -26,16 +43,51 @@ index ace345c..e17067e 100644
    const [videosReady, setVideosReady] = useState(!videosInfo.length);
    const [chartsReady, setChartsReady] = useState(false);
  
-@@ -831,7 +838,7 @@ function EpisodeViewerInner({
-                   lerobot-doctor
-                 </a>
+   const loadStartRef = useRef(performance.now());
+ 
+   const router = useRouter();
+   const searchParams = useSearchParams();
+ 
+   // Tab state & lazy stats — read sessionStorage in the initializer so the
+   // correct tab renders on the very first frame (no post-mount flash).
+   // Safe because EpisodeViewerInner only mounts client-side (behind a loading gate).
+   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+     if (typeof window !== "undefined") {
+       const stored = sessionStorage.getItem("activeTab");
+       if (
+         stored &&
+         [
+           "episodes",
+           "annotations",
+           "statistics",
+@@ -814,50 +821,50 @@ function EpisodeViewerInner({
+                 }}
+               />
+             </Suspense>
+           )}
+ 
+           {activeTab === "doctor" && (
+             <div className="flex flex-col h-full">
+               <div className="flex items-center justify-between px-1 pb-2 text-xs text-slate-400">
+                 <span>
+                   Dataset quality diagnostics &mdash; powered by{" "}
+                   <a
+                     href="https://github.com/jashshah999/lerobot-doctor"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     className="underline hover:text-slate-200"
+                   >
+                     lerobot-doctor
+                   </a>
+                 </span>
                  <a
 -                  href={`https://jashshah999-lerobot-doctor.hf.space/?dataset=${org}/${dataset}`}
 +                  href={doctorUrl}
                    target="_blank"
                    rel="noopener noreferrer"
                    className="underline hover:text-slate-200"
-@@ -840,7 +847,7 @@ function EpisodeViewerInner({
+                 >
+                   Open in new tab
                  </a>
                </div>
                <iframe
@@ -44,5 +96,22 @@ index ace345c..e17067e 100644
                  title="lerobot-doctor"
                  className="flex-1 w-full rounded border border-slate-700 bg-white"
                  sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+               />
+             </div>
+           )}
+ 
+           {activeTab === "urdf" && (
+             <Suspense fallback={<Loading />}>
+               <URDFViewer
+                 data={data}
+                 org={org}
+                 dataset={dataset}
+                 episodeChangerRef={urdfChangerRef}
+                 playToggleRef={urdfPlayToggleRef}
+               />
+             </Suspense>
+           )}
+         </div>
+       </div>
 -- 
 2.43.0

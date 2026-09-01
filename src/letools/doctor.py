@@ -11,6 +11,7 @@ from typing import Any
 import av
 
 from letools import _native
+from letools.external import upstream_project
 
 
 def _distribution_version(name: str) -> str | None:
@@ -55,4 +56,15 @@ def environment_report() -> dict[str, Any]:
             },
         },
         "system_ffmpeg": _system_ffmpeg(),
+        "external": {
+            project["name"]: {
+                "commit": project["commit"],
+                "repository": project["repository"],
+                "license": project["license"],
+            }
+            for project in (
+                upstream_project("lerobot-doctor"),
+                upstream_project("lerobot-dataset-visualizer"),
+            )
+        },
     }
