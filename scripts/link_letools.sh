@@ -58,6 +58,9 @@ if ((REMOVE)); then
 fi
 
 if ((SYNC)); then
+    # The external applications are build inputs. Keep the one-command developer
+    # setup contract even when the repository was cloned without recursion.
+    git -C "${PROJECT_ROOT}" submodule update --init --recursive
     uv sync --project "${PROJECT_ROOT}" --locked
 fi
 if [[ ! -x "${TARGET}" ]]; then

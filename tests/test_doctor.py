@@ -1,5 +1,8 @@
 import json
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from letools.cli import main
 from letools.doctor import environment_report
@@ -24,6 +27,23 @@ def test_external_provenance_and_visualizer_resources() -> None:
     ]
 
 
+def test_external_submodule_commits_match_manifest() -> None:
+    root = Path(__file__).resolve().parents[1]
+    if not (root / ".git").exists():
+        pytest.skip("Git metadata is not present in this source distribution")
+    for name in ("lerobot-doctor", "lerobot-dataset-visualizer"):
+        project = upstream_project(name)
+        submodule = root / project["path"]
+        head = subprocess.run(
+            ["git", "-C", str(submodule), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert project["tracking"] == "git-submodule"
+        assert head == project["commit"]
+
+
 def test_doctor_environment_explicit(capsys) -> None:
     assert main(["doctor", "environment"]) == 0
     report = json.loads(capsys.readouterr().out)
@@ -32,7 +52,7 @@ def test_doctor_environment_explicit(capsys) -> None:
     )
 
 
-def test_vendored_doctor_check(tmp_path: Path, capsys) -> None:
+def test_pinned_doctor_check(tmp_path: Path, capsys) -> None:
     dataset = make_v21(tmp_path / "dataset")
     status = main(
         [

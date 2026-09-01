@@ -1,6 +1,6 @@
-"""Lifecycle and local-data adapters for the vendored LeRobot Visualizer.
+"""Lifecycle and local-data adapters for the pinned LeRobot Visualizer.
 
-The upstream Next.js application remains an immutable external snapshot. This
+The upstream Next.js application remains a read-only pinned submodule. This
 module prepares a patched user-cache copy, installs its locked Bun dependencies,
 and supervises the web process plus optional data and annotation services.
 """

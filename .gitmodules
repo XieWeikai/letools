@@ -1,0 +1,8 @@
+[submodule "third_party/external/lerobot-doctor"]
+	path = third_party/external/lerobot-doctor
+	url = https://github.com/jashshah999/lerobot-doctor.git
+	shallow = true
+[submodule "third_party/external/lerobot-dataset-visualizer"]
+	path = third_party/external/lerobot-dataset-visualizer
+	url = https://github.com/huggingface/lerobot-dataset-visualizer.git
+	shallow = true

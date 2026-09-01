@@ -224,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
 
     tokens = list(sys.argv[1:] if argv is None else argv)
     # Preserve the original no-argument environment report while delegating
-    # every dataset operation to the complete vendored Doctor CLI. This early
+    # every dataset operation to the complete pinned Doctor CLI. This early
     # dispatch also preserves upstream parsing, help text, and exit semantics.
     if tokens and tokens[0] == "doctor" and len(tokens) > 1:
         if tokens[1] == "environment":

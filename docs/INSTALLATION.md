@@ -5,10 +5,17 @@
 After cloning the repository, install letools as a user-level command:
 
 ```bash
-git clone https://github.com/XieWeikai/letools.git
+git clone --recurse-submodules https://github.com/XieWeikai/letools.git
 cd letools
 uv tool install .
 letools doctor
+```
+
+Doctor and Visualizer are pinned Git submodules. A clone made without
+`--recurse-submodules` must initialize them before any uv build or install:
+
+```bash
+git submodule update --init --recursive
 ```
 
 `uv tool install` creates an isolated runtime environment and publishes the
@@ -93,7 +100,8 @@ locked runtime development:
 ./scripts/link_letools.sh
 ```
 
-It runs `uv sync --locked`, then creates this user-owned link:
+It initializes pinned submodules, runs `uv sync --locked`, then creates this
+user-owned link:
 
 ```text
 $(uv tool dir --bin)/letools -> CHECKOUT/.venv/bin/letools
@@ -117,13 +125,15 @@ For a standalone user tool installed from a clone:
 
 ```bash
 git pull
+git submodule update --init --recursive
 uv tool install --force .
 ```
 
-For an editable tool, a normal source-only `git pull` is immediately visible.
-Reinstall after dependency or packaging changes:
+For an editable tool, source-only changes are immediately visible. After every
+pull, update submodules before reinstalling dependency or packaging changes:
 
 ```bash
+git submodule update --init --recursive
 uv tool install --force --editable .
 ```
 

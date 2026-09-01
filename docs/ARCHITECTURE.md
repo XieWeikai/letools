@@ -177,7 +177,7 @@ because h5py serializes HDF5 C API calls inside one process.
 | `external.py` | Checkout/wheel resource resolution and provenance | Upstream mutation or execution policy |
 | `visualizer.py` | App cache, patch/install fingerprints, target adapters, process lifecycle | Browser feature implementation or conversion |
 | `visualizer_server.py` | Confined local Hub routes, Range I/O, embedded Doctor report | General file serving or dataset rewriting |
-| `third_party/external/` | Immutable complete upstream snapshots | LeTools-owned edits |
+| `third_party/external/` | Exact upstream commits through Git submodules | LeTools-owned edits |
 | `third_party/patches/` | Reviewable transformations applied to cache copies | Runtime state or generated dependencies |
 | `native/` | Parallel file primitives and optional FFmpeg hot paths | Python model or planner policy |
 
@@ -578,9 +578,9 @@ architecture/usage document are reviewed in the same commit.
                   |                         |
         letools provider report      provenance + fingerprint
                   |                         |
-      dataset args delegated          immutable Visualizer snapshot
+      dataset args delegated          pinned Visualizer submodule
                   |                         |
-       vendored Doctor package       cache copy + reviewed patch
+       pinned Doctor package         cache copy + reviewed patch
                   |                    /          |          \
         physical/Hub dataset    local HTTP   annotation API   Next.js
                                   |                |             |
@@ -589,11 +589,13 @@ architecture/usage document are reviewed in the same commit.
                            Doctor HTML/JSON
 ```
 
-`third_party/UPSTREAM.toml` is the source of truth for repository, commit,
-retrieval date, license, and integration purpose. The Python wheel includes the
-Doctor package plus Visualizer source, lockfile, patch, provenance, and license.
-An installed wheel is never changed: Visualizer preparation copies source into
-an XDG cache and atomically replaces that copy only when its fingerprint changes.
+Git submodule links are the source of truth for checked-out upstream commits;
+`third_party/UPSTREAM.toml` mirrors repository, commit, retrieval date, license,
+and integration purpose for packaging and diagnostics. The Python wheel includes
+the Doctor package plus Visualizer source, lockfile, patch, provenance, and
+license. An installed wheel is never changed: Visualizer preparation copies
+source into an XDG cache and atomically replaces that copy only when its
+fingerprint changes.
 
 Doctor's CLI owns dataset parsing, checks, output, repair semantics, and exit
 codes. LeTools reserves only the no-argument/environment command and otherwise

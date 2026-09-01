@@ -11,7 +11,7 @@ performance evidence:
   policy gates, merge checks, safety, and Visualizer embedding.
 - [Dataset Visualizer](VISUALIZER.md): local and Hub operation, Bun cache setup,
   ports, annotations, Doctor, Slurm forwarding, security, and process design.
-- [External snapshots](THIRD_PARTY.md): immutable source policy, packaging,
+- [External submodules](THIRD_PARTY.md): pinned source policy, packaging,
   patches, provenance, licenses, and the upstream update procedure.
 - [Architecture](ARCHITECTURE.md): module ownership, SourceProvider construction,
   two-stage CLI parsing, data flow, native acceleration, and extension points.

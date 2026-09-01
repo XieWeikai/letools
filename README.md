@@ -33,11 +33,15 @@ Detailed documentation:
 Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) are required.
 
 ```bash
-git clone https://github.com/XieWeikai/letools.git
+git clone --recurse-submodules https://github.com/XieWeikai/letools.git
 cd letools
 uv tool install .
 letools doctor
 ```
+
+Doctor and Visualizer are pinned Git submodules and are required build inputs.
+For an existing non-recursive clone, run
+`git submodule update --init --recursive` before installing.
 
 `uv tool install .` creates an isolated user-level environment and publishes the
 `letools` executable, normally under `~/.local/bin`. No virtual-environment
@@ -50,6 +54,7 @@ Update or remove the standalone user command with:
 
 ```bash
 git pull
+git submodule update --init --recursive
 uv tool install --force .
 # uv tool uninstall letools
 ```
@@ -273,7 +278,7 @@ letools doctor check /data/dataset --ci --fail-on warn
 
 With no arguments, `doctor` reports the Python package, native provider and
 capabilities, PyAV's linked FFmpeg libraries, system `ffmpeg`, and pinned
-external commits. Dataset arguments invoke the complete vendored Doctor: 12
+external commits. Dataset arguments invoke the complete pinned Doctor: 12
 quality checks, JSON/Markdown/CI output, auto-repair, idle-frame trimming,
 episode scoring, policy gates, and merge compatibility. Preview `fix` and
 `trim` with `--dry-run`; see [the Doctor guide](docs/DOCTOR.md).
@@ -403,9 +408,10 @@ rewrites. This separation also guarantees that merge development cannot regress
 conversion dispatch or third-party source behavior.
 
 Doctor and Visualizer are also separate from conversion. Their complete
-upstream implementations are pinned under `third_party/external`; thin letools
-adapters provide deterministic packaging, local-path access, process lifecycle,
-and CLI composition without adding branches to conversion or merge hot paths.
+upstream implementations are pinned as submodules under `third_party/external`;
+thin letools adapters provide deterministic packaging, local-path access,
+process lifecycle, and CLI composition without adding branches to conversion
+or merge hot paths.
 
 The Rust boundary is deliberately coarse. Python passes paths and episode time
 ranges once per file; Rust owns open/demux/remux/hash/trailer/close and releases
@@ -504,6 +510,6 @@ correctness, resource, and acceptance rules.
 
 letools is released under the MIT License. FFmpeg and other dependencies retain
 their own licenses; bundled native release artifacts include the corresponding
-notices and build configuration. The pinned Doctor and Visualizer snapshots are
+notices and build configuration. The pinned Doctor and Visualizer submodules are
 Apache-2.0 and retain their upstream license files and provenance under
 `third_party/`; see [the external-source policy](docs/THIRD_PARTY.md).

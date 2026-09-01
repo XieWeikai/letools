@@ -2,7 +2,7 @@
 
 `letools visualizer` runs the complete pinned Hugging Face LeRobot Dataset
 Visualizer for either a local dataset path or a Hub `org/dataset` ID. The
-upstream Next.js application remains an immutable snapshot; letools prepares a
+upstream Next.js application is pinned as a Git submodule; letools prepares a
 patched cache copy, supplies local services, and supervises the processes.
 
 ## Prerequisites and one-time setup
@@ -15,10 +15,10 @@ bun --version
 letools visualizer setup
 ```
 
-The upstream snapshot currently uses Bun 1.3.9. `setup` copies the pinned app to
+The pinned upstream commit currently uses Bun 1.3.9. `setup` copies the app to
 `${XDG_CACHE_HOME:-$HOME/.cache}/letools/visualizer/<commit>/source`, applies the
 reviewed letools patches, and runs `bun install --frozen-lockfile`. The pristine
-repository snapshot is never modified. Repeated setup is a fingerprinted no-op
+submodule checkout is never modified. Repeated setup is a fingerprinted no-op
 unless the upstream commit, patch set, lockfile, or Bun version changes.
 
 Use an existing non-`PATH` Bun or a different cache location with:
@@ -195,4 +195,3 @@ same values. A browser that loads the UI but not local data normally cannot
 reach the printed `dataset_origin`; forward the data port or supply a public
 origin. Hub authorization errors require credentials in the process running
 letools, not only a browser login.
-

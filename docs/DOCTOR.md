@@ -2,7 +2,7 @@
 
 `letools doctor` integrates the complete pinned `lerobot-doctor` command set.
 LeTools does not copy or reimplement individual checks: dataset arguments are
-delegated to the vendored upstream package, so reports, repair behavior, and
+delegated to the pinned upstream submodule package, so reports, repair behavior, and
 exit codes remain upstream behavior.
 
 ## Command boundary
@@ -147,6 +147,5 @@ pinned implementation only for local targets.
 
 `src/letools/doctor_external.py` is intentionally a thin CLI adapter.
 `src/letools/visualizer_server.py` owns only local HTTP presentation and calls
-the vendored public loader/runner/report APIs. Upstream algorithms live under
+the pinned public loader/runner/report APIs. Upstream algorithms live under
 `third_party/external/lerobot-doctor` and must not be edited directly.
-

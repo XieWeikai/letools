@@ -5,7 +5,7 @@
 `letools` requires Python 3.12 or newer and `uv`.
 
 ```bash
-git clone https://github.com/XieWeikai/letools.git
+git clone --recurse-submodules https://github.com/XieWeikai/letools.git
 cd letools
 uv tool install .
 letools doctor

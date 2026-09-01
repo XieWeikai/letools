@@ -1,4 +1,4 @@
-"""Locations and provenance for immutable external source snapshots.
+"""Locations and provenance for pinned external submodules and wheel resources.
 
 The repository checkout and installed wheel have different layouts. Adapters
 use this module instead of relying on the current working directory, keeping

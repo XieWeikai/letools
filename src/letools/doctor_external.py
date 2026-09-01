@@ -1,4 +1,4 @@
-"""Compatibility adapter for the complete vendored lerobot-doctor CLI."""
+"""Compatibility adapter for the complete pinned lerobot-doctor CLI."""
 
 from __future__ import annotations
 
