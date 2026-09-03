@@ -2,7 +2,7 @@
 
 Status: active
 
-Seventeen accepted optimizations are present on `/workspace/shrelic/letools/main`,
+Nineteen accepted optimizations are present on `/workspace/shrelic/letools/main`,
 including the six accepted HDF5-source optimizations. All conversions and full
 comparisons ran as single-node Slurm jobs within the protocol resource ceiling.
 The HDF5 source, preset tooling, documentation, and accepted performance work
@@ -11,6 +11,11 @@ were integrated into `main` after completing the feature campaign.
 Iteration 0046 is accepted below. It removes redundant per-video temporary
 renames inside the conversion coordinator's hidden staging transaction while
 preserving atomic behavior for standalone split callers.
+
+Iteration 0047 was rejected because episode fan-out multiplied the v3 Arrow
+table cache by worker count (about 6x RSS), despite a faster data stage.
+Iteration 0048 fixes that specific issue with a shared current-shard cache and
+is accepted below.
 
 ## Accepted optimizations
 
@@ -32,6 +37,16 @@ Each percentage compares the candidate median with the current-main baseline
 for that iteration. Results from different workloads are not multiplied.
 
 ## HDF5 source campaign
+
+## Iteration 0048: shared v3 shard cache
+
+The v3.0 -> v2.1 target direction improved by 12.77% on the five-sample Full
+dagger median (70.226 -> 62.274 s) while RSS fell to 0.987x and CPU seconds
+fell. The non-target forward direction remained within noise (-1.71%), and
+HDF5 v2.1/v3.0 five-sample wall times also fell (-9.32% and -1.70%). Deep validation,
+official loaders, packet payloads, both roundtrips, and failure publication
+checks passed. Raw evidence is in the ignored
+`iterations/0048-shared-shard-cache/` archive.
 
 ## Iteration 0046: staged v2.1 media output
 
@@ -146,6 +161,6 @@ writing about 39 GiB, leaving I/O wait rather than a Python hot loop.
 - Rust-split v3.0 roundtrip: `/jfs/tmp/letools/si-0019-roundtrip-v30`
 
 The governing process is [PROTOCOL.md](PROTOCOL.md). Future optimization cycles
-should continue numbering from iteration 0046 and use the current accepted
+should continue numbering from iteration 0049 and use the current accepted
 `main` tip as their baseline. Drafts, profiles, diffs, and reports remain under
 the ignored `self-improve/` workspace.

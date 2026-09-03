@@ -94,25 +94,38 @@ class LeRobotV21Backend(DatasetBackend):
 
         data_plan_started = time.perf_counter()
         data_groups: dict[str, list[Episode]] = defaultdict(list)
+        shared_shard = False
         for episode in source.episodes:
-            data_groups[source.data_profile(episode).locality_key].append(episode)
+            profile = source.data_profile(episode)
+            data_groups[profile.locality_key].append(episode)
+            shared_shard |= profile.resource_rows > episode.length
         recorder.add("data_plan", time.perf_counter() - data_plan_started)
+
+        def write_episode(episode: Episode) -> None:
+            table = source.read_episode(episode)
+            path = destination / info["data_path"].format(
+                episode_chunk=episode.index // config.chunks_size,
+                episode_index=episode.index,
+            )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            pq.write_table(table, path)
 
         def write_data_group(group: list[Episode]) -> None:
             for episode in group:
-                table = source.read_episode(episode)
-                path = destination / info["data_path"].format(
-                    episode_chunk=episode.index // config.chunks_size,
-                    episode_index=episode.index,
-                )
-                path.parent.mkdir(parents=True, exist_ok=True)
-                pq.write_table(table, path)
+                write_episode(episode)
+
+        # A v3 shard can contain many logical episodes. Flatten only this
+        # source capability so one large shard does not pin a single worker;
+        # HDF5/AgileX profiles have one resource per episode and retain the
+        # existing locality-group scheduling.
+        data_jobs = list(source.episodes) if shared_shard else list(data_groups.values())
+        writer = write_episode if shared_shard else write_data_group
 
         data_started = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=min(config.workers, len(data_groups) or 1)) as pool:
-            list(pool.map(write_data_group, data_groups.values()))
+        with ThreadPoolExecutor(max_workers=min(config.workers, len(data_jobs) or 1)) as pool:
+            list(pool.map(writer, data_jobs))
         recorder.add(
-            "data_execute", time.perf_counter() - data_started, tasks=len(data_groups)
+            "data_execute", time.perf_counter() - data_started, tasks=len(data_jobs)
         )
 
         video_plan_started = time.perf_counter()

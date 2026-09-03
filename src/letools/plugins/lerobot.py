@@ -154,15 +154,27 @@ class LeRobotV30Source(DatasetSource):
                 )
             )
         self.episodes = tuple(episodes)
-        self._local = threading.local()
+        # All episode slices are read-only views. Sharing one current shard
+        # avoids multiplying a potentially large Arrow table by worker count
+        # when a v2.1 backend fans out its episode writes.
+        self._table_lock = threading.Lock()
+        self._table_path: Path | None = None
+        self._table: pa.Table | None = None
 
     def read_episode(self, episode: Episode) -> pa.Table:
-        """Slice one episode while reusing the current shard per worker thread."""
+        """Slice one episode while sharing one current shard across workers."""
 
-        if getattr(self._local, "path", None) != episode.data_path:
-            self._local.path = episode.data_path
-            self._local.table = pq.read_table(episode.data_path)
-        return self._local.table.slice(episode.data_start, episode.length)
+        with self._table_lock:
+            if self._table_path != episode.data_path or self._table is None:
+                # Publish the new cache entry only after a complete read. If
+                # parquet loading fails, a later call must not mistake the old
+                # table for the requested shard.
+                table = pq.read_table(episode.data_path)
+                self._table_path = episode.data_path
+                self._table = table
+            else:
+                table = self._table
+        return table.slice(episode.data_start, episode.length)
 
     def data_profile(self, episode: Episode) -> EpisodeDataProfile:
         """Scale a shared v3 shard profile to this episode's row contribution."""

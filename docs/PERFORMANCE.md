@@ -92,6 +92,20 @@ no slowdown: v2.1 17.881 -> 16.518 s (-7.62%), v3.0 10.790 -> 10.852 s
 semantic and packet-payload checks passed for both LeRobot directions and both
 HDF5 targets; see the ignored iteration archive for raw metrics.
 
+### Iteration 0048: shared v3 shard cache
+
+The accepted `c56bedd` to candidate comparison combined bounded v3-shard
+episode fan-out with one shared read-only Arrow table cache. On the 811-episode
+10 GiB Medium workload, five-sample medians at 16 CPUs/48 GiB were 18.541 ->
+15.517 s on `/home` (+19.49%) and 13.027 -> 11.494 s on `/jfs` (+13.34%) for
+v3.0 -> v2.1. Candidate RSS was 0.916x/0.901x of baseline and peak threads
+were unchanged. Full dagger five-sample medians at 8 CPUs/48 GiB were 70.226
+-> 62.274 s (+12.77%) for v3.0 -> v2.1; the non-target forward direction was
+36.068 -> 36.694 s (-1.71%) inside the 25% baseline spread. HDF5 five-sample
+wall-time changes were -9.32% (v2.1) and -1.70% (v3.0), both faster candidates
+with no semantic change.
+The full correctness gate passed for all LeRobot and HDF5 outputs.
+
 These numbers demonstrate other code paths and must not be compared directly
 with the 300-episode chart because their datasets and allocations differ.
 

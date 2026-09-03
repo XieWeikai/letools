@@ -211,6 +211,13 @@ previous atomic path. HDF5 `FrameSequence` jobs ignore this flag and continue
 to use their existing direct frame encoder, so source semantics and resource
 topology are unchanged.
 
+For v3.0 sources, v2.1 data fan-out may use a bounded episode thread pool. The
+v3 reader exposes a single lock-protected current-shard Arrow table to those
+workers; returned slices retain their immutable buffers while the cache moves
+to another shard. The optimization is deliberately private to the v2.1
+backend/source pair. Per-worker table caches or a generic DAG would multiply
+RSS and are not part of the public abstraction.
+
 ## 5. Source provider contract
 
 `SourceProvider` is a frontend factory, not a data reader. It exists because
