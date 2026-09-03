@@ -25,6 +25,21 @@ environment. The environment includes PyAV, PyArrow, HDF5 support, NumPy, the
 matching `letools-native` wheel, the pinned Doctor package, and the Visualizer
 annotation dependencies declared by the project.
 
+### Installing an external source provider
+
+User-owned source formats should be installed as separate Python packages:
+
+```bash
+uv pip install -e /work/my-robot-letools
+letools providers list
+```
+
+The package must advertise the `letools.source_providers` entry-point group in
+its `pyproject.toml`. LeTools discovers those entry points at startup and keeps
+their dependencies outside the core repository. Private development modules can
+instead be loaded with `~/.config/letools/providers.toml` or
+`LETOOLS_PROVIDER_MODULES`; see [USAGE.md](USAGE.md#14-custom-source-plugins-and-providers).
+
 If the shell cannot find the new command, run this once and start a new shell:
 
 ```bash

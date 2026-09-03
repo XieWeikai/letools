@@ -47,5 +47,20 @@ arguments and central source-format conditionals.
 A distributed source specification is JSON, scheduler-neutral, and sufficient
 to reopen the same semantics without local process state. Embed resolved
 mappings and normalized options when a preset store or user configuration is
-not shared. Update the closed source-kind validation and worker reconstruction
-together. Never pickle live source objects or depend on login-node-only paths.
+not shared. Built-in formats retain their named kinds; external providers use
+`kind="provider"` with a canonical `provider` name and `provider_api_version`.
+Never pickle live source objects or depend on login-node-only paths.
+
+Set `config_type` to a frozen dataclass to obtain the default JSON-safe
+`config_to_dict()` and `config_from_dict()` behavior. Override both methods for
+nested mappings or other values that need normalization. The default
+`distributed_spec()` stores the absolute root, provider name, API version, and
+options. `open_source_spec()` validates that API version and delegates source
+construction to the registered provider. Workers must install the same package
+or load the same local module.
+
+The registry discovers installed packages through the
+`letools.source_providers` entry-point group. It can additionally load explicit
+`module:object` references from `~/.config/letools/providers.toml` or
+`LETOOLS_PROVIDER_MODULES`. Duplicate names and aliases are errors, and
+`letools providers list` exposes provenance for auditing.

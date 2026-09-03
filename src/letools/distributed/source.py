@@ -24,6 +24,7 @@ from letools.plugins import (
     HDF5Source,
     open_dataset,
 )
+from letools.source_providers import source_providers
 from letools.tools.hdf5_preset import HDF5Preset
 
 from .types import SourceSpec
@@ -44,6 +45,20 @@ def open_source_spec(spec: SourceSpec) -> DatasetSource:
             fps=int(spec.options.get("fps", 30)),
             robot_type=str(spec.options.get("robot_type", "cobot_magic")),
         )
+    if spec.kind == "provider":
+        if not spec.provider:
+            raise ValueError("External distributed source is missing provider name")
+        provider = source_providers.get(spec.provider)
+        if (
+            spec.provider_api_version is not None
+            and spec.provider_api_version != provider.api_version
+        ):
+            raise ValueError(
+                f"Provider {provider.name!r} API mismatch: manifest has "
+                f"{spec.provider_api_version}, installed provider has {provider.api_version}"
+            )
+        config = provider.config_from_dict(dict(spec.options))
+        return provider.open(Path(spec.root), config)
     raise ValueError(f"Unsupported distributed source kind: {spec.kind}")
 
 

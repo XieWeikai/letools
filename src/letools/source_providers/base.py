@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
 
@@ -29,6 +30,10 @@ class SourceProvider(ABC, Generic[_ConfigT]):
 
     name: str
     aliases: tuple[str, ...] = ()
+    # Increment when the serialized provider/configuration contract changes.
+    api_version: int = 1
+    # Optional dataclass type used by the default wire-format decoder.
+    config_type: type[_ConfigT] | None = None
 
     @abstractmethod
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
@@ -63,13 +68,53 @@ class SourceProvider(ABC, Generic[_ConfigT]):
     def distributed_spec(self, source: Path, config: _ConfigT) -> SourceSpec:
         """Serialize worker construction inputs for distributed conversion.
 
-        Providers that support the distributed frontend override this method.
-        Keeping source-specific serialization here prevents the CLI and task
-        protocol from accumulating format branches.
+        Dataclass configurations get a portable default representation. A
+        provider with legacy or non-JSON values can override this method and
+        retain full control over its wire format.
         """
 
+        from letools.distributed.types import SourceSpec
+
+        return SourceSpec(
+            kind="provider",
+            root=str(source.resolve()),
+            options=self.config_to_dict(config),
+            provider=self.name,
+            provider_api_version=self.api_version,
+        )
+
+    def config_to_dict(self, config: _ConfigT) -> dict[str, object]:
+        """Return JSON-compatible construction options for a distributed plan.
+
+        Dataclass configurations are supported automatically. Providers using a
+        richer configuration (for example, a path object or enum) should
+        override this method and normalize those values explicitly.
+        """
+
+        if not is_dataclass(config):
+            raise TypeError(
+                f"Provider {self.name!r} must implement config_to_dict for "
+                f"{type(config).__name__}"
+            )
+        value = asdict(config)
+        try:
+            json.dumps(value)
+        except TypeError as error:
+            raise TypeError(
+                f"Provider {self.name!r} config is not JSON serializable; "
+                "override config_to_dict"
+            ) from error
+        return value
+
+    def config_from_dict(self, value: dict[str, object]) -> _ConfigT:
+        """Rebuild a configuration embedded in a distributed source spec."""
+
+        if self.config_type is not None:
+            return self.config_type(**value)
+
         raise NotImplementedError(
-            f"Source provider {self.name!r} does not support distributed conversion"
+            f"Provider {self.name!r} must implement config_from_dict for "
+            "distributed conversion"
         )
 
 

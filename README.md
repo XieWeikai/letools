@@ -24,6 +24,9 @@ table-heavy work into coarse native operations that release the GIL.
 
 - **Convert more sources.** LeRobot v2.1, LeRobot v3.0, mapped HDF5, and
   timestamp-aligned AgileX recordings can target v2.1 or v3.0.
+- **Extend without forking.** Install a user-owned `SourceProvider` package via
+  the `letools.source_providers` entry-point group, or load a local module for
+  one-off formats; the same provider can participate in distributed plans.
 - **Round-trip LeRobot.** Convert v2.1 to v3.0 and v3.0 back to v2.1 with
   semantic metadata, Arrow values, statistics, and packet-payload checks.
 - **Merge at the physical-layout level.** A specialized same-version engine
@@ -82,6 +85,7 @@ Convert between LeRobot layouts and let the planner tune the run:
 ```bash
 letools convert /data/dataset-v21 /data/dataset-v30 --to v3.0 --auto
 letools convert /data/dataset-v30 /data/dataset-v21 --to v2.1 --auto
+letools providers list
 ```
 
 Create an interactive HDF5 mapping preset, then reuse it in local or batch

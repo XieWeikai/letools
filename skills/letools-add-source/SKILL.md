@@ -32,13 +32,20 @@ Read [architecture contracts](references/contracts.md), then choose one scope:
 
 1. A Python API-only source implements `DatasetSource`; callers construct it
    directly. It needs no CLI provider.
-2. A built-in CLI source also implements a typed `SourceProvider` and registers
-   it in the built-in registry.
-3. A distributed built-in source additionally serializes every construction
-   input into `SourceSpec` and supports reconstruction on a clean worker.
+2. An external CLI source packages a typed `SourceProvider` and advertises it
+   through the `letools.source_providers` Python entry-point group. This is the
+   preferred path for user-specific formats because no LeTools checkout changes
+   are needed.
+3. A built-in CLI source registers in the repository's built-in registry only
+   when the format is maintained as part of LeTools itself.
+4. A distributed source additionally serializes every construction input into
+   `SourceSpec` and supports reconstruction on a clean worker.
 
 Do not promise distributed support merely because local conversion works.
-External package entry-point discovery is not currently a LeTools capability.
+External providers are discovered at import time. For an un-packaged checkout,
+use `~/.config/letools/providers.toml` or `LETOOLS_PROVIDER_MODULES` to load an
+explicit `module:object` reference. Read [external-provider.md](references/external-provider.md)
+for the package and local-module workflows.
 
 ## Implement in dependency order
 
@@ -59,7 +66,7 @@ that merely restate code.
 
 ## Prove the integration
 
-Use [acceptance and documentation](references/acceptance.md). A built-in source
+Use [acceptance and documentation](references/acceptance.md). A source
 is not complete until representative data converts to both LeRobot v2.1 and
 v3.0, both outputs deep-validate, and their decoded semantics agree with the
 source. Include provider isolation, invalid configuration, planner profiling,

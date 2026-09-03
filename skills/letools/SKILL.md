@@ -26,6 +26,9 @@ planning, merge, validation, Doctor, or Visualizer logic.
 
 - For conversion, resource planning, HDF5, or AgileX, read
   [conversion and sources](references/conversion.md).
+- For a user-owned or third-party source provider, also read
+  [external providers](../letools-add-source/references/external-provider.md)
+  and inspect `letools providers list` before selecting its format.
 - For same-version LeRobot merge, read [merge](references/merge.md).
 - For multi-node conversion or explicit Slurm/Kubernetes execution, read
   [distributed execution](references/distributed.md).

@@ -61,8 +61,12 @@ A live `DatasetSource` is not serialized or sent between nodes. Planning stores
 a versioned `SourceSpec` containing an absolute root, source kind, and portable
 options. HDF5 plans embed the complete versioned preset rather than a reference
 to `~/.config`, so workers do not depend on the submitting user's preset store.
-AgileX plans store instruction, FPS, and robot type. Each worker reconstructs
-the source from this JSON contract.
+AgileX plans store instruction, FPS, and robot type. External providers use the
+generic `kind="provider"` form, which stores the canonical provider name, API
+version, and normalized configuration. Every worker must have that provider
+package installed (or load the same configured local module); an API mismatch
+fails before source data is opened. Each worker reconstructs the source from
+this JSON contract without pickling live objects.
 
 ### Episode subset boundary
 

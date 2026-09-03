@@ -52,6 +52,7 @@ letools doctor [environment|DATASET|check|fix|trim|score|gate|merge-check]
 letools visualizer setup [options]
 letools visualizer serve PATH_OR_REPO [options]
 letools tools hdf5-preset create|list|show ...
+letools providers list
 letools dist plan|submit|status|worker|finalize ...
 ```
 
@@ -866,14 +867,101 @@ only physical LeRobot v2.1 and v3.0 directories. CLI conversion and planning can
 also construct `HDF5Source` from an explicit preset or `AgileXSource` from an
 explicit instruction.
 
-To expose a custom source through an application CLI, implement a
-`SourceProvider` beside the `DatasetSource`. The provider registers only its
-construction arguments, converts them into an immutable config, and constructs
-the source. Register it with `source_providers.register(provider)`. The provider
-must not read episodes or call a backend; all conversion behavior starts after
-it returns the common `DatasetSource` interface. The installed `letools` command
-currently registers built-ins in code and does not discover package entry
-points.
+To expose a custom source through the installed `letools` command, put the
+provider in an ordinary Python package and advertise it with the standard
+entry-point group. No LeTools source file needs to be copied into this
+repository:
+
+```toml
+[project]
+name = "my-robot-letools"
+dependencies = ["letools"]
+
+[project.entry-points."letools.source_providers"]
+my_robot = "my_robot_letools.provider:provider"
+```
+
+The referenced object can be a provider instance, a `SourceProvider` subclass,
+or a zero-argument factory. Install the package into the same environment as
+LeTools, then inspect the active registry:
+
+```bash
+uv pip install -e /path/to/my-robot-letools
+letools providers list
+letools convert /data/my-robot /data/lerobot-v30 \
+  --source-format my_robot --to v3.0 --auto
+```
+
+The provider owns only source-specific arguments and construction. Its
+`config_from_args()` should return a frozen typed configuration, and `open()`
+should return a normal `DatasetSource`. The conversion coordinator, planner,
+backends, validators, and media executors see no provider-specific branches.
+Provider-specific flags appear only after selecting `--source-format my_robot`:
+
+```bash
+letools convert SOURCE DESTINATION --source-format my_robot --help
+```
+
+### Local modules without packaging
+
+For a private script or a development checkout, register `module:object`
+references explicitly. This is useful before publishing a package and is still
+auditable because `letools providers list` reports `origin` as `config:...` or
+`environment`:
+
+```toml
+# ~/.config/letools/providers.toml
+[providers.my_robot]
+module = "my_robot_letools.provider:provider"
+pythonpath = ["/work/my-robot-letools/src"]
+enabled = true
+```
+
+Alternatively, use a comma-separated environment variable for one process:
+
+```bash
+LETOOLS_PROVIDER_MODULES=my_robot_letools.provider:provider \
+  PYTHONPATH=/work/my-robot-letools/src letools providers list
+```
+
+The configuration file is read-only input; it does not install packages or
+modify the LeTools checkout. Duplicate canonical names or aliases fail fast so
+an external provider cannot silently replace a built-in provider.
+
+### Distributed conversion requirements
+
+Local conversion needs only `DatasetSource`. A provider used with
+`letools dist plan` must also make its configuration reconstructible on worker
+nodes. The default implementation handles a JSON-safe frozen dataclass when
+the provider sets `config_type`:
+
+```python
+from dataclasses import dataclass
+from letools import SourceProvider
+
+@dataclass(frozen=True)
+class MyRobotConfig:
+    prompt: str
+
+class MyRobotProvider(SourceProvider[MyRobotConfig]):
+    name = "my_robot"
+    config_type = MyRobotConfig
+    # add_arguments(), config_from_args(), and open() as above
+```
+
+For nested mappings, paths, enums, or other custom values, override
+`config_to_dict()` and `config_from_dict()` and return JSON-compatible values.
+The default `distributed_spec()` stores an absolute source path, provider name,
+API version, and those options. Workers must install the same provider package
+and a compatible `api_version`; otherwise reconstruction stops with an explicit
+error. Providers with legacy wire formats may override `distributed_spec()`
+while retaining the same `SourceSpec` contract.
+
+The in-process API remains available for applications and tests:
+`source_providers.register(provider)` adds a provider to that process only. It
+is useful for notebooks and avoids any packaging step, but it is not visible to
+a separately launched worker unless the provider is also installed or loaded
+through a local module configuration.
 
 ## 15. Development setup
 

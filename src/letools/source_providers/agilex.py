@@ -36,6 +36,7 @@ class AgileXSourceProvider(SourceProvider[AgileXSourceConfig]):
     """Parse explicit AgileX semantics before opening the physical recording."""
 
     name = "agilex"
+    config_type = AgileXSourceConfig
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(

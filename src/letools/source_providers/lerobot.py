@@ -21,6 +21,7 @@ class LeRobotSourceProvider(SourceProvider[LeRobotSourceConfig]):
 
     name = "lerobot"
     aliases = ("auto",)
+    config_type = LeRobotSourceConfig
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """LeRobot path detection has no additional CLI arguments."""

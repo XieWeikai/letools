@@ -28,9 +28,12 @@ Specify accurate physical/logical media profiles and worker isolation.
 
 ## 3. Frontend provider
 
-For built-in CLI support, add a frozen config dataclass and provider under
-`src/letools/source_providers/`. Register and export it in
-`source_providers/__init__.py`. Names and aliases must not conflict. Validate
+For an external CLI source, put the frozen config and provider in the user's
+package and add a `[project.entry-points."letools.source_providers"]` entry.
+Install it into LeTools' environment and verify it with `letools providers list`.
+For a format maintained in this repository, add the provider under
+`src/letools/source_providers/`, register it in `source_providers/__init__.py`,
+and export its public types. Names and aliases must not conflict. Validate
 user-facing semantics before constructing the source; provider-only flags must
 remain absent from unrelated source help.
 
@@ -39,11 +42,12 @@ calibration, or mapping belongs to this typed provider configuration.
 
 ## 4. Distributed reconstruction
 
-Only when requested, extend `SourceKind`, `SourceSpec.from_dict()`, and
-`open_source_spec()` together. Implement the provider's `distributed_spec()`
-with absolute shared paths and complete JSON-safe configuration. Test
+Only when requested, use the generic `kind="provider"` source specification.
+Set `config_type` for a dataclass configuration or implement
+`config_to_dict()`/`config_from_dict()` explicitly. Override
+`distributed_spec()` only for a deliberate wire-format exception. Test
 serialize -> deserialize -> reopen in a context without the original preset
-store or Python object.
+store or Python object, and test API-version mismatch failure.
 
 ## 5. Performance
 

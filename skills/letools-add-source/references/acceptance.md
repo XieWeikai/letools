@@ -14,10 +14,15 @@ Tests must cover:
   source, including video when present;
 - provider-specific help, option isolation, immutable config, and explicit
   rejection of missing semantic inputs;
+- external entry-point and local-module discovery, duplicate-name rejection,
+  provenance shown by `letools providers list`, and CLI selection after a clean
+  package install;
 - planner identity, physical/logical profiles, locality grouping, and encoding
   classification;
 - distributed specification JSON round-trip and worker reopening when that
   surface is supported.
+- external distributed-provider API-version mismatch must fail before any
+  source data is read.
 
 Use official LeRobot metadata and dataset loaders in compatibility tests where
 the repository already provides those fixtures or environments. Do not replace

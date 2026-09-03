@@ -13,7 +13,9 @@ from typing import Any, Literal, cast
 
 
 PROTOCOL_VERSION = 1
-SourceKind = Literal["lerobot", "hdf5", "agilex"]
+# Built-ins retain their explicit kinds for backwards compatibility. External
+# providers use the generic ``provider`` kind and carry their canonical name.
+SourceKind = str
 
 
 @dataclass(frozen=True)
@@ -23,19 +25,39 @@ class SourceSpec:
     kind: SourceKind
     root: str
     options: dict[str, Any] = field(default_factory=dict)
+    provider: str | None = None
+    provider_api_version: int | None = None
+    provider_distribution: str | None = None
+    provider_version: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        value = asdict(self)
+        # Keep manifests produced before external providers byte-compatible;
+        # optional provenance fields are emitted only when they have a value.
+        return {key: item for key, item in value.items() if item is not None}
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> SourceSpec:
         kind = str(value["kind"])
-        if kind not in {"lerobot", "hdf5", "agilex"}:
+        if kind not in {"lerobot", "hdf5", "agilex", "provider"}:
             raise ValueError(f"Unsupported distributed source kind: {kind}")
+        provider = value.get("provider")
+        if kind == "provider" and not provider:
+            raise ValueError("External distributed sources require a provider name")
         return cls(
             cast(SourceKind, kind),
             str(value["root"]),
             dict(value.get("options", {})),
+            str(provider) if provider is not None else None,
+            int(value["provider_api_version"])
+            if value.get("provider_api_version") is not None
+            else None,
+            str(value["provider_distribution"])
+            if value.get("provider_distribution") is not None
+            else None,
+            str(value["provider_version"])
+            if value.get("provider_version") is not None
+            else None,
         )
 
 
@@ -81,7 +103,9 @@ class DistributedPlan:
     validate: bool = True
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        value = asdict(self)
+        value["source"] = self.source.to_dict()
+        return value
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> DistributedPlan:

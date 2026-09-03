@@ -51,6 +51,8 @@ from .source_providers import (
     SourceProvider,
     SourceProviderContext,
     SourceProviderRegistry,
+    ProviderInfo,
+    ENTRY_POINT_GROUP,
     source_providers,
 )
 from .telemetry import StageMetrics
@@ -90,6 +92,8 @@ __all__ = [
     "SourceProvider",
     "SourceProviderContext",
     "SourceProviderRegistry",
+    "ProviderInfo",
+    "ENTRY_POINT_GROUP",
     "SourceSpec",
     "SubmissionResult",
     "SchedulerAdapter",

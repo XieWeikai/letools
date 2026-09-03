@@ -4,7 +4,7 @@ from .agilex import AgileXSourceConfig, AgileXSourceProvider
 from .base import SourceProvider, SourceProviderContext
 from .hdf5 import HDF5SourceConfig, HDF5SourceProvider
 from .lerobot import LeRobotSourceConfig, LeRobotSourceProvider
-from .registry import SourceProviderRegistry
+from .registry import ENTRY_POINT_GROUP, ProviderInfo, SourceProviderRegistry
 
 
 source_providers = SourceProviderRegistry(
@@ -14,6 +14,7 @@ source_providers = SourceProviderRegistry(
         AgileXSourceProvider(),
     )
 )
+source_providers.discover()
 
 
 __all__ = [
@@ -26,5 +27,7 @@ __all__ = [
     "SourceProvider",
     "SourceProviderContext",
     "SourceProviderRegistry",
+    "ProviderInfo",
+    "ENTRY_POINT_GROUP",
     "source_providers",
 ]

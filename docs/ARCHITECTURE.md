@@ -14,7 +14,8 @@ The implemented product boundary is intentionally narrow:
 - read one-file-per-episode HDF5 datasets through an explicit mapping;
 - read timestamped AgileX episode directories with an explicit instruction;
 - write LeRobot v2.1 and v3.0 datasets;
-- accept a custom `DatasetSource` through the Python API;
+- accept custom `DatasetSource` objects through the Python API and discover
+  third-party `SourceProvider` packages without modifying this repository;
 - validate one dataset and compare two datasets semantically;
 - choose a static conversion configuration before execution;
 - merge multiple physical same-version LeRobot datasets through a specialized path;
@@ -25,8 +26,9 @@ The implemented product boundary is intentionally narrow:
   storage without coupling dataset semantics to a scheduler.
 
 It is not a training, robot-control, dataset-upload, object-storage conversion,
-or runtime autoscaling system. The CLI does not yet discover third-party source
-plugins or third-party backends by entry point.
+or runtime autoscaling system. Output backends remain built into LeTools;
+third-party input providers are discovered through the standard Python package
+entry-point mechanism or an explicit local configuration file.
 
 ## 2. Component view
 
@@ -156,7 +158,7 @@ because h5py serializes HDF5 C API calls inside one process.
 | --- | --- | --- |
 | `cli.py` | Argument parsing, exit status, JSON serialization | Format logic, planning policy |
 | `source_providers/base.py` | CLI source-factory contract and frontend context | Dataset parsing or conversion execution |
-| `source_providers/registry.py` | Provider names, aliases, and conflict-free lookup | Source detection or plugin semantics |
+| `source_providers/registry.py` | Provider names, aliases, discovery, provenance, and conflict-free lookup | Source detection or plugin semantics |
 | `source_providers/{lerobot,hdf5,agilex}.py` | Provider-specific arguments, immutable config, and source construction | Episode reads, planning, or target writing |
 | `conversion.py` | Version dispatch, staging, validation gate, publication, stage lifecycle | File-layout details, worker selection |
 | `conversion_types.py` | Explicit execution configuration and result types | Resource discovery or heuristics |
@@ -251,8 +253,33 @@ with `DatasetSource`, planner, coordinator, primitives, and backends. Once
 provider does not add type branches to the conversion path.
 
 The built-in registry is deterministic and rejects duplicate names or aliases.
-Applications may register a provider in-process. The installed CLI does not yet
-discover external providers through Python package entry points.
+Applications may register a provider in-process. The installed CLI also
+discovers packages advertising the `letools.source_providers` entry-point group,
+then optional modules listed in `LETOOLS_PROVIDERS_FILE` (or
+`~/.config/letools/providers.toml`) and `LETOOLS_PROVIDER_MODULES`. Discovery is
+performed once during package import and is deterministic by entry-point name.
+The `letools providers list` command exposes canonical names, aliases, module,
+distribution, version, and origin so an operator can audit the active plugin
+set.
+
+An external provider is a normal Python package. Its project metadata contains,
+for example:
+
+```toml
+[project.entry-points."letools.source_providers"]
+my_robot = "my_robot_letools.provider:provider"
+```
+
+The entry-point object may be a provider instance, a `SourceProvider` subclass,
+or a zero-argument factory. The provider's `config_type` can be a frozen
+dataclass to obtain automatic JSON serialization for distributed manifests;
+providers with nested or non-JSON values override `config_to_dict()` and
+`config_from_dict()`. The default `distributed_spec()` records
+`kind="provider"`, the absolute source path, canonical provider name, API
+version, and normalized options. `open_source_spec()` validates the API version
+and delegates reconstruction to that provider. This makes scheduler workers
+independent of the coordinator's live Python objects, while preserving the
+source-provider boundary.
 
 ## 6. Source plugin contract
 

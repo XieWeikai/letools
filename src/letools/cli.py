@@ -6,7 +6,7 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -92,7 +92,15 @@ def _distributed_source_spec(args: argparse.Namespace) -> SourceSpec:
     provider: SourceProvider[Any] = args._source_provider
     context = SourceProviderContext(interactive=False)
     config = provider.config_from_args(args, context)
-    return provider.distributed_spec(args.source, config)
+    spec = provider.distributed_spec(args.source, config)
+    if spec.kind == "provider":
+        info = source_providers.info(provider.name)
+        spec = replace(
+            spec,
+            provider_distribution=info.distribution,
+            provider_version=info.version,
+        )
+    return spec
 
 
 def build_parser(
@@ -270,6 +278,13 @@ def build_parser(
     preset_commands.add_parser("list", help="List presets in the user store")
     preset_show = preset_commands.add_parser("show", help="Print one preset as JSON")
     preset_show.add_argument("preset")
+    providers = commands.add_parser(
+        "providers", help="List registered built-in and external data-source providers"
+    )
+    provider_commands = providers.add_subparsers(
+        dest="providers_command", required=True
+    )
+    provider_commands.add_parser("list", help="Print provider names and provenance")
     return parser
 
 
@@ -320,6 +335,16 @@ def main(argv: list[str] | None = None) -> int:
         return run_doctor(tokens[1:])
 
     args = parse_cli_args(tokens)
+    if args.command == "providers":
+        if args.providers_command == "list":
+            print(
+                json.dumps(
+                    [asdict(info) for info in source_providers.infos()],
+                    indent=2,
+                    default=_json_default,
+                )
+            )
+            return 0
     if args.command == "dist":
         if args.dist_command == "plan":
             plan = plan_distributed_conversion(
