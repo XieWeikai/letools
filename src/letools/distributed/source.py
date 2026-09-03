@@ -47,27 +47,6 @@ def open_source_spec(spec: SourceSpec) -> DatasetSource:
     raise ValueError(f"Unsupported distributed source kind: {spec.kind}")
 
 
-def _constant_stats(value: int, count: int) -> dict[str, list[int | float]]:
-    return {
-        "min": [value],
-        "max": [value],
-        "mean": [float(value)],
-        "std": [0.0],
-        "count": [count],
-    }
-
-
-def _index_stats(start: int, length: int) -> dict[str, list[int | float]]:
-    values = np.arange(start, start + length, dtype=np.int64)
-    return {
-        "min": [int(values.min())],
-        "max": [int(values.max())],
-        "mean": [float(values.mean())],
-        "std": [float(values.std())],
-        "count": [length],
-    }
-
-
 class EpisodeSubsetSource(DatasetSource):
     """Present a contiguous source interval as a standalone zero-based dataset.
 

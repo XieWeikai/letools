@@ -69,7 +69,8 @@ the source from this JSON contract.
 Each task owns a nonempty contiguous half-open interval `[start, stop)`. The
 internal `EpisodeSubsetSource` delegates data/media reads to the original
 source, exposes zero-based local episodes, and rewrites only generated
-`episode_index` and global `index` columns and statistics. Existing backends
+`episode_index` and global `index` columns. Source episode statistics are
+preserved and restored after final merge. Existing backends
 therefore write each task as an independently valid LeRobot dataset without
 distributed branches in their hot paths.
 
