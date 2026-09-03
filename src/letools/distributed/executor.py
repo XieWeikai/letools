@@ -8,6 +8,11 @@ import socket
 import time
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from letools._io import write_json, write_jsonl
+from letools._stats import flatten_stats, aggregate_episode_stats
 from letools.conversion import convert
 from letools.conversion_types import ConversionConfig
 from letools.merge import merge_datasets
@@ -22,6 +27,48 @@ from .types import (
     DistributedTask,
     TaskResult,
 )
+
+
+def _restore_source_episode_stats(source, destination: Path, target_version: str) -> None:
+    """Restore source episode statistics after the part merge remaps row indices.
+
+    The specialized merge engine correctly recomputes system-column statistics
+    for a general merge. A distributed conversion, however, must match the
+    ordinary converter, which carries source episode statistics through the
+    version change (including v2.1 chunk-local index statistics).
+    """
+
+    source_stats = {episode.index: episode.stats for episode in source.episodes}
+    if target_version == "v2.1":
+        rows = [
+            {"episode_index": index, "stats": source_stats[index]}
+            for index in range(len(source.episodes))
+        ]
+        write_jsonl(destination / "meta/episodes_stats.jsonl", rows)
+        return
+
+    episode_path = destination / "meta/episodes/chunk-000/file-000.parquet"
+    table = pq.read_table(episode_path)
+    columns = {name: table[name] for name in table.column_names if not name.startswith("stats/")}
+    stats_columns: dict[str, list[object]] = {}
+    for row_index, episode_index in enumerate(table["episode_index"].to_pylist()):
+        flattened = flatten_stats(source_stats[int(episode_index)])
+        for name in list(stats_columns):
+            stats_columns[name].append(flattened.get(name))
+        for name, value in flattened.items():
+            if name not in stats_columns:
+                stats_columns[name] = [None] * row_index + [value]
+    arrays = [columns[name] for name in columns]
+    names = list(columns)
+    for name, values in stats_columns.items():
+        field = table.schema.field(name) if name in table.column_names else None
+        arrays.append(pa.array(values, type=field.type if field else None))
+        names.append(name)
+    pq.write_table(pa.Table.from_arrays(arrays, names=names), episode_path)
+    write_json(
+        destination / "meta/stats.json",
+        aggregate_episode_stats([source_stats[index] for index in range(len(source.episodes))]),
+    )
 
 
 def _part_is_valid(path: Path, validate: bool) -> bool:
@@ -217,6 +264,9 @@ def try_finalize_distributed_job(job_dir: str | Path) -> DistributedStatus:
             f".{destination.name}.letools-dist-{plan.job_id}"
         )
         _build_final_output(store, parts, final)
+        _restore_source_episode_stats(
+            open_source_spec(plan.source), final, plan.target_version
+        )
         if destination.exists() and not plan.overwrite:
             raise FileExistsError(f"Destination already exists: {destination}")
         if destination.exists():

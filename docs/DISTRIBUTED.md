@@ -234,6 +234,44 @@ the plan worker fields control concurrency inside one task. More nodes do not
 guarantee more throughput on shared storage. The MVP leaves cluster-level I/O
 saturation measurement to the operator and makes all limits explicit.
 
+### Single-node versus two-node measurement
+
+On 2026-09-03 we compared the same 811-episode, 693,669-frame, 10 GiB source
+with 16 total CPUs on the same shared filesystem. The non-distributed run used
+one task with 16 data/video workers. The distributed run used two Slurm nodes,
+one task and 8 CPUs per node, two contiguous episode tasks, and the same worker
+settings per task. Each result is the median of three sequential samples with
+source cache eviction between runs; distributed wall time includes final part
+merge, while `task phase` stops before merge.
+
+| Filesystem / direction | Single wall | Distributed task phase | Distributed final merge | Distributed wall | End-to-end change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `/home`, v3.0 -> v2.1 | 16.299 s | 10.719 s | 20.374 s | 31.164 s | -47.70% |
+| `/home`, v2.1 -> v3.0 | 17.133 s | 10.228 s | 10.321 s | 20.549 s | -16.62% |
+| `/jfs`, v3.0 -> v2.1 | 9.179 s | 9.673 s | 8.384 s | 18.025 s | -49.08% |
+| `/jfs`, v2.1 -> v3.0 | 7.613 s | 6.114 s | 3.107 s | 9.221 s | -17.44% |
+
+The corresponding end-to-end throughputs were 49.76/26.02 episodes/s on
+`/home` reverse, 47.33/39.47 on `/home` forward, 88.35/44.99 on `/jfs`
+reverse, and 106.53/87.95 on `/jfs` forward. Distributed peak RSS was about
+1.29 GiB for reverse and 0.82--0.84 GiB for forward, versus 0.52--0.66 GiB
+single-node RSS; peak threads rose from 41/51 to 51/54 because each task owns
+its own conversion workers.
+
+This demonstrates that task fan-out can shorten the conversion phase, but the
+current MVP writes complete parts and then rewrites them during final merge.
+On `/home` reverse, merge alone exceeded the single-node conversion time. On a
+shared JuiceFS, adding nodes therefore does not guarantee higher end-to-end
+throughput and can increase aggregate I/O contention. A future optimization
+should publish compatible final shards directly or perform a streaming merge,
+and should autotune cluster `max_parallel` against aggregate storage bandwidth.
+
+The benchmark also found and fixed a correctness issue: the subset adapter now
+preserves source episode statistics while rewriting only physical row indices;
+the finalizer restores those statistics after part merge. The corrected retained
+distributed output passed deep validation and semantic packet comparison for
+all 811 episodes, 693,669 frames, and 2,433 videos.
+
 The next planner iteration should calibrate 1/2/4/... concurrent tasks under a
 strict read/write budget, retain the smallest concurrency near peak aggregate
 throughput, and include the storage and cluster fingerprint in the plan. That

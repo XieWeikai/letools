@@ -87,12 +87,11 @@ class EpisodeSubsetSource(DatasetSource):
         self._originals: list[Episode] = []
         frame_offset = 0
         for new_index, original in enumerate(originals):
-            stats = copy.deepcopy(original.stats)
-            if "episode_index" in stats:
-                stats["episode_index"] = _constant_stats(new_index, original.length)
-            if "index" in stats:
-                stats["index"] = _index_stats(frame_offset, original.length)
-            episodes.append(replace(original, index=new_index, stats=stats))
+            # Keep source statistics unchanged. The part's physical rows use
+            # zero-based local system columns, but final merge recomputes only
+            # system-column statistics from those rows. Feature and source
+            # statistics must remain identical to a non-distributed conversion.
+            episodes.append(replace(original, index=new_index))
             self._originals.append(original)
             frame_offset += original.length
         self.episodes = tuple(episodes)
