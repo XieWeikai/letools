@@ -34,11 +34,16 @@ class GroupMediaJob:
 
 @dataclass(frozen=True)
 class EpisodeMediaJob:
-    """One source-locality group fanned out into v2.1 episode files."""
+    """One source-locality group fanned out into v2.1 episode files.
+
+    `atomic_output` is false only when every target is protected by the
+    conversion coordinator's unpublished dataset staging directory.
+    """
 
     outputs: tuple[tuple[MediaInput, Path], ...]
     fps: int
     encoding: VideoEncodingConfig
+    atomic_output: bool = True
 
 
 _JobT = TypeVar("_JobT", GroupMediaJob, EpisodeMediaJob)
@@ -55,7 +60,12 @@ def _write_group_job(job: GroupMediaJob) -> None:
 
 
 def _write_episode_job(job: EpisodeMediaJob) -> None:
-    write_episode_media(job.outputs, job.fps, job.encoding)
+    write_episode_media(
+        job.outputs,
+        job.fps,
+        job.encoding,
+        atomic_output=job.atomic_output,
+    )
 
 
 def _media_inputs(jobs: Iterable[GroupMediaJob | EpisodeMediaJob]) -> Iterable[MediaInput]:

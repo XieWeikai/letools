@@ -52,6 +52,12 @@ def video_split_available() -> bool:
     return _native is not None and hasattr(_native, "split_video")
 
 
+def video_staged_output_available() -> bool:
+    """Report direct output support for files protected by dataset staging."""
+
+    return _native is not None and hasattr(_native, "split_video_staged")
+
+
 def file_sizes(paths: Sequence[Path]) -> list[int]:
     """Stat paths in input order, using parallel Rust when available."""
 
@@ -111,9 +117,17 @@ def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
     _native.concatenate_videos(list(inputs), output)
 
 
-def split_video(source: Path, outputs: Sequence[tuple[float, float, Path]]) -> None:
-    """Invoke native packet-preserving slice extraction or fail explicitly."""
+def split_video(
+    source: Path,
+    outputs: Sequence[tuple[float, float, Path]],
+    *,
+    atomic_output: bool = True,
+) -> None:
+    """Invoke native packet-preserving slicing with explicit publication scope."""
 
     if not video_split_available():
         raise RuntimeError("native video split capability is unavailable")
+    if not atomic_output and video_staged_output_available():
+        _native.split_video_staged(source, list(outputs))
+        return
     _native.split_video(source, list(outputs))

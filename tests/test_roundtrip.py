@@ -140,6 +140,28 @@ def test_v21_v30_roundtrip(tmp_path: Path) -> None:
     assert compare_datasets(source, roundtrip).equal
 
 
+def test_conversion_failure_removes_unpublished_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A backend failure must never expose or retain a partial dataset."""
+
+    source = make_v21(tmp_path / "v21")
+    destination = tmp_path / "failed-v30"
+
+    def fail_after_partial_write(_backend, _source, staging, _config, _recorder) -> None:
+        partial = staging / "videos/camera/chunk-000/partial.mp4"
+        partial.parent.mkdir(parents=True)
+        partial.write_bytes(b"incomplete")
+        raise RuntimeError("injected backend failure")
+
+    monkeypatch.setattr("letools.conversion.LeRobotV30Backend.write", fail_after_partial_write)
+    with pytest.raises(RuntimeError, match="injected backend failure"):
+        convert(source, destination, "v3.0")
+
+    assert not destination.exists()
+    assert not list(tmp_path.glob(f".{destination.name}.letools-*"))
+
+
 def test_file_sizes(tmp_path: Path) -> None:
     first = tmp_path / "first"
     second = tmp_path / "second"

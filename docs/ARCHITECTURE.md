@@ -195,6 +195,22 @@ because h5py serializes HDF5 C API calls inside one process.
 | `third_party/patches/` | Reviewable transformations applied to cache copies | Runtime state or generated dependencies |
 | `native/` | Parallel file primitives and optional FFmpeg hot paths | Python model or planner policy |
 
+### Dataset staging and media publication
+
+`conversion.py` writes every target below a hidden sibling staging directory
+and renames that directory only after backend completion and shallow validation.
+The v2.1 backend passes this ownership fact to `EpisodeMediaJob` through its
+private `atomic_output=False` field. The native split primitive then writes MP4
+files directly into the unpublished staging tree instead of creating a
+temporary file and issuing a second per-file rename. This is safe because a
+failed conversion removes the complete staging tree and an existing published
+destination is untouched until the final directory rename. Standalone
+`letools._video.split_video()` callers retain `atomic_output=True` by default,
+and old native wheels without the staged capability transparently use the
+previous atomic path. HDF5 `FrameSequence` jobs ignore this flag and continue
+to use their existing direct frame encoder, so source semantics and resource
+topology are unchanged.
+
 ## 5. Source provider contract
 
 `SourceProvider` is a frontend factory, not a data reader. It exists because

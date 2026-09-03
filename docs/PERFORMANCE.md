@@ -68,6 +68,30 @@ and [self-improvement summary](https://github.com/XieWeikai/letools/blob/main/se
 
 ## Other accepted workloads
 
+### Iteration 0046: staged v2.1 media output
+
+The accepted `bd3f77b` to candidate `opt/0046-staging-direct-video` comparison
+used the frozen 811-episode/693,669-frame 10 GiB v3.0 source on H800-node11,
+with one Slurm task, 16 CPUs, 48 GiB, 16 data workers, and 16 video workers.
+Each filesystem used five alternating baseline/candidate samples after the
+initial three-sample spread exceeded 5%. The candidate writes split MP4s
+directly below the hidden dataset staging root, removing one temporary rename
+per output while preserving standalone atomic writes.
+
+| Destination filesystem | Baseline median | Candidate median | Throughput change | RSS ratio | CPU ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| NFS `/home` | 20.733 s (39.12 ep/s) | 19.064 s (42.54 ep/s) | **+8.76%** | 0.980 | 1.012 |
+| JuiceFS `/jfs` | 18.180 s (44.61 ep/s) | 16.823 s (48.21 ep/s) | **+8.07%** | 0.995 | 1.035 |
+
+On the full 3,457-episode dagger workload at 8 CPUs/48 GiB, five-sample medians
+were 39.244 -> 38.613 s for v2.1 to v3.0 (+1.64%, within run noise) and
+79.725 -> 72.630 s for v3.0 to v2.1 (+9.77%). Peak RSS and peak threads
+remained within the protocol ratios. HDF5 five-sample regression medians showed
+no slowdown: v2.1 17.881 -> 16.518 s (-7.62%), v3.0 10.790 -> 10.852 s
+(+0.58%). Full deep
+semantic and packet-payload checks passed for both LeRobot directions and both
+HDF5 targets; see the ignored iteration archive for raw metrics.
+
 These numbers demonstrate other code paths and must not be compared directly
 with the 300-episode chart because their datasets and allocations differ.
 

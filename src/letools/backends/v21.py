@@ -137,6 +137,10 @@ class LeRobotV21Backend(DatasetBackend):
                         outputs=tuple(inputs),
                         fps=source.metadata.fps,
                         encoding=config.video_encoding,
+                        # The destination is a hidden transaction root. A
+                        # failed remux removes the entire tree, so per-file
+                        # temporary rename would be redundant.
+                        atomic_output=False,
                     )
                 )
         recorder.add("video_plan", time.perf_counter() - video_plan_started)

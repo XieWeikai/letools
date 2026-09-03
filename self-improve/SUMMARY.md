@@ -1,12 +1,16 @@
 # letools self-improvement summary
 
-Status: complete
+Status: active
 
 Seventeen accepted optimizations are present on `/workspace/shrelic/letools/main`,
 including the six accepted HDF5-source optimizations. All conversions and full
 comparisons ran as single-node Slurm jobs within the protocol resource ceiling.
 The HDF5 source, preset tooling, documentation, and accepted performance work
 were integrated into `main` after completing the feature campaign.
+
+Iteration 0046 is accepted below. It removes redundant per-video temporary
+renames inside the conversion coordinator's hidden staging transaction while
+preserving atomic behavior for standalone split callers.
 
 ## Accepted optimizations
 
@@ -28,6 +32,18 @@ Each percentage compares the candidate median with the current-main baseline
 for that iteration. Results from different workloads are not multiplied.
 
 ## HDF5 source campaign
+
+## Iteration 0046: staged v2.1 media output
+
+The accepted commit is the campaign commit that contains this summary update.
+
+The candidate passed five-sample Medium comparisons on both NFS `/home`
+(20.733 -> 19.064 s, +8.76%) and JuiceFS `/jfs` (18.180 -> 16.823 s,
++8.07%) with 16 CPUs and 48 GiB. On the complete dagger workload the final
+five-sample medians improved v2.1 -> v3.0 by 1.64% (within noise) and v3.0
+-> v2.1 by 9.77%, with no resource-ratio or HDF5 regression. Deep validation, official loaders, packet payloads, both
+roundtrips, and failure-publication checks all passed. The detailed raw
+evidence remains in the ignored `iterations/0046-staging-direct-video/` archive.
 
 The fixed XVLA Soft Fold workload contains 108 episodes, 125412 trajectory
 frames, three JPEG cameras, 376236 encoded frames, and 20.7 GiB of HDF5 input.

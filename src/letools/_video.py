@@ -74,8 +74,16 @@ def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
 def split_video(
     source_path: Path,
     outputs: Sequence[tuple[VideoSlice, Path]],
+    *,
+    atomic_output: bool = True,
 ) -> None:
-    """Remux timestamp slices from one input into per-episode outputs."""
+    """Remux timestamp slices with optional outer-transaction protection.
+
+    Atomic output remains the default for standalone callers. A conversion
+    backend may disable it only while writing below its unpublished dataset
+    staging root, whose cleanup and final directory rename provide the same
+    externally visible transaction boundary.
+    """
 
     if not outputs:
         return
@@ -92,6 +100,7 @@ def split_video(
                 (video_slice.start, video_slice.end, target)
                 for video_slice, target in outputs
             ],
+            atomic_output=atomic_output,
         )
         return
 
@@ -113,7 +122,8 @@ def split_video(
         if destination is None or temporary is None:
             return
         destination.close()
-        shutil.move(temporary, outputs[current_index][1])
+        if atomic_output:
+            shutil.move(temporary, outputs[current_index][1])
         destination = None
         temporary = None
 
@@ -128,8 +138,13 @@ def split_video(
                 current_index += 1
                 video_slice, target_path = outputs[current_index]
                 target_path.parent.mkdir(parents=True, exist_ok=True)
-                with tempfile.NamedTemporaryFile(suffix=target_path.suffix, delete=False) as handle:
-                    temporary = Path(handle.name)
+                if atomic_output:
+                    with tempfile.NamedTemporaryFile(
+                        suffix=target_path.suffix, delete=False
+                    ) as handle:
+                        temporary = Path(handle.name)
+                else:
+                    temporary = target_path
                 destination = av.open(str(temporary), mode="w")
                 stream_map = {}
                 timestamp_offsets = {}
@@ -378,8 +393,10 @@ def write_episode_media(
     outputs: Sequence[tuple[MediaInput, Path]],
     fps: int,
     encoding: VideoEncodingConfig,
+    *,
+    atomic_output: bool = True,
 ) -> None:
-    """Write one locality group as per-episode v2.1 media files."""
+    """Write one locality group with an explicit file publication boundary."""
 
     if not outputs:
         return
@@ -387,7 +404,7 @@ def write_episode_media(
         paths = {media.path for media, _ in outputs}
         if len(paths) != 1:
             raise ValueError("Video slices in one locality group must share a path")
-        split_video(next(iter(paths)), outputs)
+        split_video(next(iter(paths)), outputs, atomic_output=atomic_output)
         return
     if all(isinstance(media, FrameSequence) for media, _ in outputs):
         for media, output in outputs:

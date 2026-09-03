@@ -266,7 +266,7 @@ fn concat_videos(inputs: &[PathBuf], output: &PathBuf) -> Result<(), String> {
 /// One active split container and the state required to rebase its packets.
 struct SplitOutput {
     context: ffmpeg::format::context::Output,
-    temporary: tempfile::TempPath,
+    temporary: Option<tempfile::TempPath>,
     target: PathBuf,
     stream_mapping: Vec<isize>,
     output_time_bases: Vec<ffmpeg::Rational>,
@@ -280,18 +280,29 @@ fn open_split_output(
     start: f64,
     stream_count: usize,
     streams: &[(usize, ffmpeg::codec::Parameters, ffmpeg::Rational)],
+    atomic_output: bool,
 ) -> Result<SplitOutput, String> {
     let parent = target
         .parent()
         .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
     fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
-    let temporary = tempfile::Builder::new()
-        .suffix(".mp4")
-        .tempfile_in(parent)
-        .map_err(|error| format!("create temporary output: {error}"))?
-        .into_temp_path();
-    let mut context = ffmpeg::format::output(&temporary)
-        .map_err(|error| format!("open temporary output: {error}"))?;
+    let temporary = if atomic_output {
+        Some(
+            tempfile::Builder::new()
+                .suffix(".mp4")
+                .tempfile_in(parent)
+                .map_err(|error| format!("create temporary output: {error}"))?
+                .into_temp_path(),
+        )
+    } else {
+        None
+    };
+    // A dataset conversion writes below an unpublished staging root. In that
+    // context the outer transaction owns cleanup, so writing the final path
+    // directly avoids a redundant per-video rename on remote filesystems.
+    let output_path = temporary.as_deref().unwrap_or(target);
+    let mut context = ffmpeg::format::output(output_path)
+        .map_err(|error| format!("open {}: {error}", output_path.display()))?;
     let mut stream_mapping = vec![-1_isize; stream_count];
     let mut timestamp_offsets = vec![0_i64; stream_count];
     for (output_index, (input_index, parameters, time_base)) in streams.iter().enumerate() {
@@ -321,23 +332,28 @@ fn open_split_output(
 }
 
 #[cfg(feature = "video")]
-/// Finalize and atomically persist one completed split output.
+/// Finalize one split output and publish it when an inner transaction is used.
 fn close_split_output(mut output: SplitOutput) -> Result<(), String> {
     output
         .context
         .write_trailer()
         .map_err(|error| format!("write {} trailer: {error}", output.target.display()))?;
     drop(output.context);
-    output
-        .temporary
-        .persist(&output.target)
-        .map_err(|error| format!("publish {}: {error}", output.target.display()))?;
+    if let Some(temporary) = output.temporary {
+        temporary
+            .persist(&output.target)
+            .map_err(|error| format!("publish {}: {error}", output.target.display()))?;
+    }
     Ok(())
 }
 
 #[cfg(feature = "video")]
 /// Demux one source pass and route ordered time ranges into separate MP4 files.
-fn split_video_slices(source: &PathBuf, outputs: &[(f64, f64, PathBuf)]) -> Result<(), String> {
+fn split_video_slices(
+    source: &PathBuf,
+    outputs: &[(f64, f64, PathBuf)],
+    atomic_output: bool,
+) -> Result<(), String> {
     if outputs.is_empty() {
         return Ok(());
     }
@@ -404,6 +420,7 @@ fn split_video_slices(source: &PathBuf, outputs: &[(f64, f64, PathBuf)]) -> Resu
                 outputs[next_index].0,
                 stream_count,
                 &streams,
+                atomic_output,
             )?);
             current_index = Some(next_index);
         }
@@ -466,7 +483,19 @@ fn concatenate_videos(py: Python<'_>, inputs: Vec<PathBuf>, output: PathBuf) -> 
 #[pyfunction]
 /// Python entry point for a one-pass, packet-preserving split operation.
 fn split_video(py: Python<'_>, source: PathBuf, outputs: Vec<(f64, f64, PathBuf)>) -> PyResult<()> {
-    py.detach(|| split_video_slices(&source, &outputs))
+    py.detach(|| split_video_slices(&source, &outputs, true))
+        .map_err(PyOSError::new_err)
+}
+
+#[cfg(feature = "video")]
+#[pyfunction]
+/// Split directly into paths protected by an unpublished dataset staging root.
+fn split_video_staged(
+    py: Python<'_>,
+    source: PathBuf,
+    outputs: Vec<(f64, f64, PathBuf)>,
+) -> PyResult<()> {
+    py.detach(|| split_video_slices(&source, &outputs, false))
         .map_err(PyOSError::new_err)
 }
 
@@ -480,6 +509,7 @@ fn build_info() -> (&'static str, Vec<&'static str>) {
         capabilities.push("video-packet-digests");
         capabilities.push("video-concat");
         capabilities.push("video-split");
+        capabilities.push("video-staged-output");
         capabilities
     };
     (env!("CARGO_PKG_VERSION"), capabilities)
@@ -493,5 +523,5 @@ mod letools_native {
 
     #[cfg(feature = "video")]
     #[pymodule_export]
-    use super::{concatenate_videos, packet_digests, split_video};
+    use super::{concatenate_videos, packet_digests, split_video, split_video_staged};
 }
