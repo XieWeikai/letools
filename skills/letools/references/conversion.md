@@ -56,6 +56,25 @@ or task description. Do not derive that instruction from a directory name. The
 provider applies the declared instruction to each episode; confirm that this is
 the intended dataset semantics.
 
+## Image encoding options
+
+`convert`, `plan`, and `dist plan` accept `--video-codec`,
+`--video-pixel-format`, `--video-batch-frames`, and `--video-codec-threads`.
+Defaults are MJPEG, automatic pixel format, 48 frames per batch, and one encoder
+thread. For HDF5, AgileX, or external image sources, keep the default JPEG packet
+mux unless the user requests a different quality/size tradeoff. Other codecs
+and explicit pixel conversions may be lossy; do not use packet equality to
+validate re-encoded output. Check decoded frame counts, ordering, boundaries,
+and quality against an agreed tolerance instead.
+
+These flags do not transcode existing MP4s. CLI remux-only and video-free sources
+reject them. Encoder availability is determined by PyAV's linked FFmpeg; a
+system `ffmpeg` with libx264 does not prove PyAV has it. Use the same options for
+planning and conversion, and let `--auto` budget worker concurrency against the
+requested encoder threads. Distributed manifests carry these options, so every
+worker needs the requested encoder. See `docs/VIDEO_ENCODING.md` when available
+for API examples, pixel-format behavior, and calibration limitations.
+
 ## Completion
 
 Keep built-in validation enabled. Parse the final JSON result for counts,

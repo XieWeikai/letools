@@ -138,6 +138,10 @@ when resources, storage, or dataset shape are not already characterized.
 | `--auto` | Plan a static configuration, then execute it |
 | `--workers N` | Maximum concurrent Parquet groups |
 | `--video-workers N` | Maximum concurrent video remux or frame-output jobs |
+| `--video-codec NAME` | Image-frame encoder, default `mjpeg`; requires encoder support in PyAV |
+| `--video-pixel-format NAME` | Explicit target pixel format; omitted preserves JPEG format or selects an encoder default |
+| `--video-batch-frames N` | Images per source batch, default 48 |
+| `--video-codec-threads N` | Requested threads per encoder, default 1 |
 | `--data-file-size-mb N` | Approximate uncompressed Parquet group target for v3 output |
 | `--video-file-size-mb N` | Approximate physical video group target for v3 output |
 | `--overwrite` | Replace an existing destination after staging succeeds |
@@ -170,6 +174,12 @@ The two target-size options affect only v3 output. They control grouping rather
 than exact encoded file size: Parquet compression and MP4 container overhead
 mean resulting files need not equal the target. Do not pass these options for
 v2.1 auto planning; v2.1 always emits per-episode data and video files.
+
+Video encoding options apply to image-frame sources targeting either output
+version. `plan` and `dist plan` accept the same flags; `--auto` calibrates with
+the selected encoder and records the configuration in the plan and cache key.
+Explicit encoding options on CLI remux-only or video-free sources are errors.
+See [VIDEO_ENCODING.md](VIDEO_ENCODING.md) for examples and resource accounting.
 
 When performance options are supplied together with `--auto`, they are hard
 constraints. The planner fills only omitted fields:
@@ -499,15 +509,21 @@ directory chunk in generated layouts and is currently configurable only through
 the Python API.
 
 Sources that provide `FrameSequence` media use `ConversionConfig.video_encoding`.
-The default writes JPEG sources directly as an MJPEG/yuvj420p MP4 stream in
+The default writes JPEG sources directly as an MJPEG MP4 stream in
 batches of 48, preserving every source JPEG packet without pixel decoding or
 lossy re-encoding. This is the fastest and highest-fidelity path, but its output
 is normally much larger than MPEG-4 transcoding. These settings do not affect
 LeRobot-to-LeRobot conversion: `VideoSlice` inputs continue to be remuxed without
-decoding or re-encoding. Advanced Python callers may request compact lossy output
+decoding or re-encoding. CLI and Python callers may request compact lossy output
 with `VideoEncodingConfig(codec="mpeg4", pixel_format="yuv420p", ...)`; non-JPEG
 sources and non-MJPEG codecs use the decode/encode fallback, and the selected
 encoder must exist in the installed PyAV runtime.
+
+`VideoEncodingConfig.pixel_format=None` preserves the actual JPEG pixel format.
+An explicit different pixel format requires re-encoding. Actual output codec
+and pixel format are read back into metadata. Python `plan_conversion()` and
+`plan_and_convert()` accept `video_encoding=VideoEncodingConfig(...)`; the
+returned plan preserves it in `conversion_config()`.
 
 `video_workers` always counts concurrent media jobs, not a promise about the
 Python executor type. LeRobot `VideoSlice` jobs and ordinary frame plugins use

@@ -61,7 +61,7 @@ benchmarks.
 | Retained media inputs | 150 episode-camera streams |
 | JPEG files in the raw recording | 128,043 |
 | Retained JPEG input bytes | 4,559,782,899 bytes (4.25 GiB) |
-| Default output encoding | MJPEG/yuvj420p packet mux |
+| Default output encoding | MJPEG packet mux preserving source JPEG pixel format |
 | v2.1 output size | 4.3 GiB |
 | v3.0 output size | 4.3 GiB |
 

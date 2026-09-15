@@ -576,14 +576,23 @@ This prevents per-packet Python calls and avoids coupling PyAV's bundled FFmpeg
 ABI to the native wheel's separately bundled FFmpeg ABI.
 
 Frame-sequence inputs take a separate PyAV path because their source contains
-still images rather than an encoded video stream. The plugin returns batches of
-encoded images; the media writer decodes those images and feeds a single output
-encoder per shard. `video_workers` limits concurrent output jobs, while
+still images rather than an encoded video stream. JPEG/MJPEG with automatic or
+matching pixel format uses direct packet mux; other combinations decode images
+and feed a single output encoder per shard. `video_workers` limits concurrent output jobs, while
 `VideoEncodingConfig.codec_threads` limits threads inside each encoder. Existing
 `VideoSlice` groups are dispatched directly to the unchanged remux primitives.
-When encoding occurs, the backend records the selected codec, pixel format, FPS,
-and lack of audio in the target video feature metadata. Remux-only conversions
+For image output, the backend reads a representative output stream to record
+the actual codec, pixel format, FPS, and lack of audio in feature metadata. Remux-only conversions
 preserve the source codec metadata unchanged.
+
+`VideoEncodingConfig` owns codec/pixel-format policy and batch/encoder-thread
+controls. Shared CLI arguments create this config for `convert`, `plan`, and
+`dist plan`; SourceProvider options remain exclusively about source semantics.
+The planner carries this config unchanged into calibration, fingerprints, plan
+JSON, and execution. Distributed `WorkerConfig` serializes it and workers repeat
+preflight using their own PyAV runtime. Encoded output requests intra frames at
+episode starts with no B-frame reordering to preserve later remux boundaries.
+See [VIDEO_ENCODING.md](VIDEO_ENCODING.md) for defaults and validation limits.
 
 The backend owns media-job construction and `_media_executor.py` owns executor
 selection. Thread-safe `FrameSequence` and every `VideoSlice` workload retain

@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from letools.conversion_types import ConversionConfig, ConversionResult
+from letools.conversion_types import (
+    ConversionConfig,
+    ConversionResult,
+    VideoEncodingConfig,
+)
 
 
 @dataclass(frozen=True)
@@ -156,6 +160,7 @@ class ConversionPlan:
     reasons: tuple[str, ...] = field(default_factory=tuple)
     measurements: tuple[CalibrationMeasurement, ...] = field(default_factory=tuple)
     cache_hit: bool = False
+    video_encoding: VideoEncodingConfig = field(default_factory=VideoEncodingConfig)
 
     def conversion_config(
         self,
@@ -173,6 +178,7 @@ class ConversionPlan:
             video_file_size_mb=self.video_file_size_mb or defaults.video_file_size_mb,
             overwrite=overwrite,
             validate=validate,
+            video_encoding=self.video_encoding,
         )
 
 

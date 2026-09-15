@@ -8,11 +8,13 @@ static worker counts; it is not a runtime controller.
 from __future__ import annotations
 
 import math
+import multiprocessing
 import shutil
 import tempfile
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Iterator
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -30,10 +32,136 @@ from letools.planner.heuristic import (
 )
 from letools.planner.types import CalibrationMeasurement, CalibrationOptions
 from letools.plugins import DatasetSource
+from letools.model import FrameBuffer, FrameSequence, MediaInput
 
 
 _MIB = 1024**2
 _Job = tuple[int, Callable[[Path, int], None]]
+
+
+@dataclass
+class _FrameSample(FrameSequence):
+    """Bound slow encoder probes to a prefix rather than an entire episode.
+
+    The deadline is checked between batches. One native encode/flush operation
+    cannot be interrupted safely, so this is an admission deadline, not a hard
+    process kill timer. No later batches start after it expires.
+    """
+
+    source: FrameSequence
+    deadline: float
+    frame_count: int
+
+    @property
+    def width(self) -> int:
+        return self.source.width
+
+    @property
+    def height(self) -> int:
+        return self.source.height
+
+    @property
+    def encoded_format(self) -> str:
+        return self.source.encoded_format
+
+    @property
+    def estimated_size_bytes(self) -> int:
+        return math.ceil(
+            self.source.estimated_size_bytes
+            * self.frame_count
+            / self.source.frame_count
+        )
+
+    def read_batch(self, start: int, stop: int) -> tuple[FrameBuffer, ...]:
+        if time.perf_counter() >= self.deadline:
+            raise TimeoutError("Video calibration deadline reached")
+        return self.source.read_batch(start, min(stop, self.frame_count))
+
+    @property
+    def worker_isolation(self):
+        return self.source.worker_isolation
+
+    def iter_batches(self, batch_frames: int) -> Iterator[tuple[FrameBuffer, ...]]:
+        produced = 0
+        batches = iter(self.source.iter_batches(min(batch_frames, self.frame_count)))
+        while produced < self.frame_count:
+            # Check before advancing the source iterator too: next() may perform
+            # the physical read, which must not start after the admission limit.
+            if time.perf_counter() >= self.deadline:
+                raise TimeoutError("Video calibration deadline reached")
+            try:
+                batch = next(batches)
+            except StopIteration:
+                return
+            if time.perf_counter() >= self.deadline:
+                raise TimeoutError("Video calibration deadline reached")
+            take = min(len(batch), self.frame_count - produced)
+            yield batch[:take]
+            produced += take
+
+
+def _sample_media(
+    media: MediaInput, encoding: VideoEncodingConfig, deadline: float
+) -> MediaInput:
+    if isinstance(media, FrameSequence) and (
+        encoding.codec != "mjpeg"
+        or encoding.pixel_format is not None
+        or media.encoded_format.lower() not in {"jpeg", "jpg"}
+    ):
+        # 48 frames exercise encoder setup and sustained work without making
+        # calibration depend on the length of a production recording.
+        return _FrameSample(media, deadline, min(48, media.frame_count))
+    return media
+
+
+@dataclass(frozen=True)
+class _EncodingProbe:
+    """Pickleable frame probe using the production media primitive and topology."""
+
+    media: FrameSequence
+    fps: int
+    encoding: VideoEncodingConfig
+
+    def __call__(self, root: Path, index: int) -> None:
+        write_media_group(
+            [self.media],
+            root / f"video-{index:04d}.mp4",
+            self.fps,
+            self.encoding,
+            local_staging=False,
+        )
+
+
+def _encoding_jobs(
+    source: DatasetSource, encoding: VideoEncodingConfig, deadline: float
+) -> list[_Job] | None:
+    if encoding.codec == "mjpeg" and encoding.pixel_format is None:
+        representatives = (
+            [
+                source.media_input(source.episodes[0], key)
+                for key in source.metadata.video_keys
+            ]
+            if source.episodes
+            else []
+        )
+        if all(
+            not isinstance(media, FrameSequence)
+            or media.encoded_format.lower() in {"jpeg", "jpg"}
+            for media in representatives
+        ):
+            return None
+    jobs = []
+    for key in source.metadata.video_keys:
+        for episode in source.episodes:
+            media = source.media_input(episode, key)
+            if not isinstance(media, FrameSequence):
+                return None
+            sample = _sample_media(media, encoding, deadline)
+            # Every sample is a bounded prefix. Charge the physical input file
+            # conservatively: compressed storage can read more than the prefix.
+            size = source.media_profile(episode, key).input_bytes
+            jobs.append((size, _EncodingProbe(sample, source.metadata.fps, encoding)))
+    return jobs
 
 
 @dataclass
@@ -92,7 +220,10 @@ def _v30_data_jobs(
         )
 
         def run(root: Path, index: int, selected=group_tuple) -> None:
-            tables = [cast_data_table(table, schema) for table in source.read_episodes(selected)]
+            tables = [
+                cast_data_table(table, schema)
+                for table in source.read_episodes(selected)
+            ]
             path = root / f"data-{index:04d}.parquet"
             pq.write_table(pa.concat_tables(tables), path)
 
@@ -113,13 +244,24 @@ def _v21_data_jobs(source: DatasetSource) -> list[_Job]:
             directory = root / f"data-{index:04d}"
             directory.mkdir(parents=True, exist_ok=True)
             for episode in group:
-                pq.write_table(source.read_episode(episode), directory / f"{episode.index}.parquet")
+                pq.write_table(
+                    source.read_episode(episode), directory / f"{episode.index}.parquet"
+                )
 
         jobs.append((input_bytes, run))
     return jobs
 
 
-def _v30_video_jobs(source: DatasetSource, target_mb: int = 32) -> list[_Job]:
+def _v30_video_jobs(
+    source: DatasetSource,
+    target_mb: int = 32,
+    *,
+    encoding: VideoEncodingConfig = VideoEncodingConfig(),
+    deadline: float = float("inf"),
+) -> list[_Job]:
+    probes = _encoding_jobs(source, encoding, deadline)
+    if probes is not None:
+        return probes
     if not source.metadata.video_keys:
         return []
     episodes = list(source.episodes)
@@ -128,7 +270,10 @@ def _v30_video_jobs(source: DatasetSource, target_mb: int = 32) -> list[_Job]:
         sizes = [source.media_profile(episode, key).input_bytes for episode in episodes]
         groups = _group_by_limit(episodes, sizes, target_mb * _MIB)
         for group in groups:
-            media = tuple(source.media_input(episode, key) for episode in group)
+            media = tuple(
+                _sample_media(source.media_input(episode, key), encoding, deadline)
+                for episode in group
+            )
             input_bytes = sum(
                 source.media_profile(episode, key).input_bytes for episode in group
             )
@@ -138,7 +283,7 @@ def _v30_video_jobs(source: DatasetSource, target_mb: int = 32) -> list[_Job]:
                     inputs,
                     root / f"video-{index:04d}.mp4",
                     source.metadata.fps,
-                    VideoEncodingConfig(),
+                    encoding,
                     local_staging=False,
                 )
 
@@ -146,7 +291,15 @@ def _v30_video_jobs(source: DatasetSource, target_mb: int = 32) -> list[_Job]:
     return jobs
 
 
-def _v21_video_jobs(source: DatasetSource) -> list[_Job]:
+def _v21_video_jobs(
+    source: DatasetSource,
+    *,
+    encoding: VideoEncodingConfig = VideoEncodingConfig(),
+    deadline: float = float("inf"),
+) -> list[_Job]:
+    probes = _encoding_jobs(source, encoding, deadline)
+    if probes is not None:
+        return probes
     if not source.metadata.video_keys:
         return []
     jobs: list[_Job] = []
@@ -157,7 +310,10 @@ def _v21_video_jobs(source: DatasetSource) -> list[_Job]:
             groups[locality].append(episode)
         for episodes in groups.values():
             selected = tuple(
-                (source.media_input(episode, key), episode.index)
+                (
+                    _sample_media(source.media_input(episode, key), encoding, deadline),
+                    episode.index,
+                )
                 for episode in episodes
             )
             input_bytes = source.media_profile(episodes[0], key).input_bytes
@@ -170,7 +326,7 @@ def _v21_video_jobs(source: DatasetSource) -> list[_Job]:
                         for item, episode_index in media
                     ],
                     source.metadata.fps,
-                    VideoEncodingConfig(),
+                    encoding,
                 )
 
             jobs.append((input_bytes, run))
@@ -223,8 +379,22 @@ def _sample_comparison_batches(
 def _run_jobs(jobs: list[_Job], workers: int, output: Path) -> float:
     output.mkdir(parents=True, exist_ok=False)
     started = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=min(workers, len(jobs))) as pool:
-        futures = [pool.submit(job, output, index) for index, (_, job) in enumerate(jobs)]
+    count = min(workers, len(jobs))
+    isolated = count > 1 and all(
+        isinstance(job, _EncodingProbe) and job.media.worker_isolation == "process"
+        for _, job in jobs
+    )
+    executor = (
+        ProcessPoolExecutor(
+            max_workers=count, mp_context=multiprocessing.get_context("spawn")
+        )
+        if isolated
+        else ThreadPoolExecutor(max_workers=count)
+    )
+    with executor as pool:
+        futures = [
+            pool.submit(job, output, index) for index, (_, job) in enumerate(jobs)
+        ]
         for future in futures:
             future.result()
     return time.perf_counter() - started
@@ -249,6 +419,9 @@ def _measure_stage(
         output = root / f"{stage}-{workers}"
         try:
             elapsed = _run_jobs(jobs, workers, output)
+        except TimeoutError:
+            # Partial samples are never cached or used to choose concurrency.
+            break
         finally:
             shutil.rmtree(output, ignore_errors=True)
         budget.consume(input_bytes)
@@ -266,9 +439,10 @@ def _measure_stage(
             best_workers = workers
         if len(measurements) >= 3:
             recent = measurements[-3:]
-            if recent[-1].throughput_bytes_per_second <= max(
-                item.throughput_bytes_per_second for item in recent[:-1]
-            ) * 1.03:
+            if (
+                recent[-1].throughput_bytes_per_second
+                <= max(item.throughput_bytes_per_second for item in recent[:-1]) * 1.03
+            ):
                 break
     return best_workers, measurements
 
@@ -282,9 +456,8 @@ def _extrapolate_worker_ceiling(
     previous, latest = measurements[-2:]
     if latest.workers >= requested_workers or previous.workers >= latest.workers:
         return None
-    observed_speedup = (
-        latest.throughput_bytes_per_second
-        / max(previous.throughput_bytes_per_second, 1e-9)
+    observed_speedup = latest.throughput_bytes_per_second / max(
+        previous.throughput_bytes_per_second, 1e-9
     )
     ideal_speedup = latest.workers / previous.workers
     if observed_speedup >= ideal_speedup * 0.80:
@@ -302,6 +475,8 @@ def calibrate_workers(
     fixed_data_workers: bool = False,
     fixed_video_workers: bool = False,
     network_io: bool = False,
+    video_encoding: VideoEncodingConfig = VideoEncodingConfig(),
+    video_worker_limit: int | None = None,
 ) -> tuple[HeuristicChoice, tuple[CalibrationMeasurement, ...]]:
     """Measure representative worker points and return an updated static choice.
 
@@ -312,13 +487,15 @@ def calibrate_workers(
     if not options.enabled:
         return choice, ()
     data_resources = {
-        source.data_profile(episode).locality_key:
-            source.data_profile(episode).resource_physical_bytes
+        source.data_profile(episode).locality_key: source.data_profile(
+            episode
+        ).resource_physical_bytes
         for episode in source.episodes
     }
     media_resources = {
-        source.media_profile(episode, key).locality_key:
-            source.media_profile(episode, key).input_bytes
+        source.media_profile(episode, key).locality_key: source.media_profile(
+            episode, key
+        ).input_bytes
         for episode in source.episodes
         for key in source.metadata.video_keys
     }
@@ -328,7 +505,9 @@ def calibrate_workers(
     if total_bytes < 64 * _MIB or (not video_bytes and data_bytes < 512 * _MIB):
         return choice, ()
 
-    root = Path(tempfile.mkdtemp(prefix=".letools-calibration-", dir=destination_parent))
+    root = Path(
+        tempfile.mkdtemp(prefix=".letools-calibration-", dir=destination_parent)
+    )
     budget = _Budget(options=options, started=time.perf_counter())
     measurements: list[CalibrationMeasurement] = []
     try:
@@ -345,12 +524,16 @@ def calibrate_workers(
             data_values = (
                 (choice.workers,)
                 if fixed_data_workers
-                else tuple(
-                    sorted({1, choice.workers, min(cpu_limit, len(data_jobs))})
-                )
+                else tuple(sorted({1, choice.workers, min(cpu_limit, len(data_jobs))}))
             )
-            data_budget = options.max_read_bytes if not video_bytes else options.max_read_bytes // 2
-            data_batches = _sample_comparison_batches(data_jobs, data_values, data_budget)
+            data_budget = (
+                options.max_read_bytes
+                if not video_bytes
+                else options.max_read_bytes // 2
+            )
+            data_batches = _sample_comparison_batches(
+                data_jobs, data_values, data_budget
+            )
             data_pairs = [
                 (workers, jobs)
                 for workers, jobs in zip(data_values, data_batches, strict=False)
@@ -366,21 +549,38 @@ def calibrate_workers(
             measurements.extend(values)
 
         video_jobs = (
-            _v30_video_jobs(source) if target_version == "v3.0" else _v21_video_jobs(source)
+            _v30_video_jobs(
+                source,
+                encoding=video_encoding,
+                deadline=budget.started + options.max_seconds,
+            )
+            if target_version == "v3.0"
+            else _v21_video_jobs(
+                source,
+                encoding=video_encoding,
+                deadline=budget.started + options.max_seconds,
+            )
         )
+        media_cpu_limit = min(cpu_limit, video_worker_limit or cpu_limit)
         video_values = (
             (choice.video_workers,)
             if fixed_video_workers
             else tuple(
                 sorted(
                     value
-                    for value in {1, choice.video_workers, min(cpu_limit, len(video_jobs))}
+                    for value in {
+                        1,
+                        choice.video_workers,
+                        min(media_cpu_limit, len(video_jobs)),
+                    }
                     if value > 0
                 )
             )
         )
         remaining_bytes = max(0, options.max_read_bytes - budget.read_bytes)
-        video_batches = _sample_worker_batches(video_jobs, video_values, remaining_bytes)
+        video_batches = _sample_worker_batches(
+            video_jobs, video_values, remaining_bytes
+        )
         video_pairs = [
             (workers, jobs)
             for workers, jobs in zip(video_values, video_batches, strict=False)
@@ -435,7 +635,9 @@ def calibrate_workers(
             *choice.reasons,
             "worker counts selected by bounded workload calibration",
             *(
-                ("video concurrency extrapolated from unsaturated calibration throughput",)
+                (
+                    "video concurrency extrapolated from unsaturated calibration throughput",
+                )
                 if extrapolated_video
                 else ()
             ),

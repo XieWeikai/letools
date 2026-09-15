@@ -22,6 +22,19 @@ planner.
 Explicit user values are hard constraints. The planner fills only unspecified
 performance fields.
 
+Image encoding policy is supplied separately as `video_encoding` in the Python
+API, or the four `--video-*` encoding options described in
+[VIDEO_ENCODING.md](VIDEO_ENCODING.md). It is stored in the returned plan and
+used unchanged by calibration and execution. The planner does not choose a
+lossy codec or change a requested pixel format. Actual encoding concurrency
+accounts for encoder threads and estimated decoded-frame/encoder memory; direct
+JPEG mux retains the original per-worker CPU model. The four fields plus the
+PyAV/FFmpeg runtime identity enter the cache key (algorithm version 8).
+
+Nondefault encoding probes use bounded 48-frame episode prefixes and preserve
+source process isolation. Deadlines are checked between batches; an in-flight
+native call can overrun the deadline. Incomplete measurements are discarded.
+
 ## 2. Public flows
 
 ```text

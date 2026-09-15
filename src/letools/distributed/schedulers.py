@@ -38,7 +38,9 @@ class LocalScheduler(SchedulerAdapter):
     def submit(self, job_dir: str | Path) -> SubmissionResult:
         store = JobStore(job_dir)
         plan = store.load_plan()
-        with ThreadPoolExecutor(max_workers=min(self.max_parallel, len(plan.tasks))) as pool:
+        with ThreadPoolExecutor(
+            max_workers=min(self.max_parallel, len(plan.tasks))
+        ) as pool:
             list(
                 pool.map(
                     lambda task: run_distributed_task(store.root, task.task_id),
@@ -80,7 +82,7 @@ class SlurmScheduler(SchedulerAdapter):
     def submit(self, job_dir: str | Path) -> SubmissionResult:
         store = JobStore(job_dir)
         plan = store.load_plan()
-        required_cpus = max(plan.worker.workers, plan.worker.video_workers)
+        required_cpus = plan.worker.required_cpus
         if self.cpus_per_task is not None and self.cpus_per_task < required_cpus:
             raise ValueError(
                 f"cpus_per_task={self.cpus_per_task} is below the plan's "
@@ -121,7 +123,9 @@ class SlurmScheduler(SchedulerAdapter):
         )
         scheduler_id = None
         if self.should_submit:
-            completed = subprocess.run(command, check=True, text=True, capture_output=True)
+            completed = subprocess.run(
+                command, check=True, text=True, capture_output=True
+            )
             scheduler_id = completed.stdout.strip().split(";", 1)[0]
         return SubmissionResult(
             self.name,
@@ -165,14 +169,14 @@ class KubernetesScheduler(SchedulerAdapter):
         store = JobStore(job_dir)
         plan = store.load_plan()
         if self.cpu is not None and self.cpu.isdigit():
-            required_cpus = max(plan.worker.workers, plan.worker.video_workers)
+            required_cpus = plan.worker.required_cpus
             if int(self.cpu) < required_cpus:
                 raise ValueError(
                     f"cpu={self.cpu} is below the plan's node-local concurrency "
                     f"{required_cpus}"
                 )
         else:
-            required_cpus = max(plan.worker.workers, plan.worker.video_workers)
+            required_cpus = plan.worker.required_cpus
         if self.pvc_claim:
             mount = Path(self.mount_path)
             required_paths = (
@@ -180,7 +184,9 @@ class KubernetesScheduler(SchedulerAdapter):
                 Path(plan.source.root),
                 Path(plan.destination),
             )
-            outside = [str(path) for path in required_paths if not path.is_relative_to(mount)]
+            outside = [
+                str(path) for path in required_paths if not path.is_relative_to(mount)
+            ]
             if outside:
                 raise ValueError(
                     "Kubernetes PVC paths must retain their absolute names below "
@@ -211,7 +217,9 @@ class KubernetesScheduler(SchedulerAdapter):
             container["resources"] = {"requests": requests, "limits": requests}
         pod_spec: dict = {"restartPolicy": "Never", "containers": [container]}
         if self.pvc_claim:
-            container["volumeMounts"] = [{"name": "shared", "mountPath": self.mount_path}]
+            container["volumeMounts"] = [
+                {"name": "shared", "mountPath": self.mount_path}
+            ]
             pod_spec["volumes"] = [
                 {
                     "name": "shared",
@@ -225,7 +233,9 @@ class KubernetesScheduler(SchedulerAdapter):
             "spec": {
                 "completionMode": "Indexed",
                 "completions": len(plan.tasks),
-                "parallelism": min(self.max_parallel or len(plan.tasks), len(plan.tasks)),
+                "parallelism": min(
+                    self.max_parallel or len(plan.tasks), len(plan.tasks)
+                ),
                 "backoffLimitPerIndex": 3,
                 "template": {"spec": pod_spec},
             },

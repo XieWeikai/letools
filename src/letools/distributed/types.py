@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
+from letools.conversion_types import VideoEncodingConfig
 
 
 PROTOCOL_VERSION = 1
@@ -83,6 +84,27 @@ class WorkerConfig:
     video_workers: int
     data_file_size_mb: int = 100
     video_file_size_mb: int = 200
+    video_encoding: VideoEncodingConfig | None = None
+    # Resolved by the coordinator from media capabilities; JPEG mux costs one
+    # worker, while real encoders may each request several threads.
+    video_cpu_per_worker: int = 1
+
+    def __post_init__(self) -> None:
+        if min(self.workers, self.video_workers, self.video_cpu_per_worker) < 1:
+            raise ValueError("Worker counts and CPU costs must be positive")
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> WorkerConfig:
+        fields = dict(value)
+        if fields.get("video_encoding") is not None:
+            fields["video_encoding"] = VideoEncodingConfig(**fields["video_encoding"])
+            if "video_cpu_per_worker" not in fields:
+                fields["video_cpu_per_worker"] = fields["video_encoding"].codec_threads
+        return cls(**fields)
+
+    @property
+    def required_cpus(self) -> int:
+        return max(self.workers, self.video_workers * self.video_cpu_per_worker)
 
 
 @dataclass(frozen=True)
@@ -124,7 +146,7 @@ class DistributedPlan:
             total_episodes=int(value["total_episodes"]),
             total_frames=int(value["total_frames"]),
             tasks=tuple(DistributedTask(**task) for task in value["tasks"]),
-            worker=WorkerConfig(**value["worker"]),
+            worker=WorkerConfig.from_dict(value["worker"]),
             overwrite=bool(value.get("overwrite", False)),
             validate=bool(value.get("validate", True)),
         )

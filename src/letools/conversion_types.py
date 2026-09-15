@@ -14,9 +14,22 @@ class VideoEncodingConfig:
     """Encoding policy used only when a source provides image frames."""
 
     codec: str = "mjpeg"
-    pixel_format: str = "yuvj420p"
+    # None preserves JPEG payloads as-is; encoders otherwise use a compatible
+    # default. An explicit value is a conversion requirement, never a label.
+    pixel_format: str | None = None
     batch_frames: int = 48
     codec_threads: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.codec or (self.pixel_format is not None and not self.pixel_format):
+            raise ValueError("Video codec and pixel format cannot be empty")
+        if self.batch_frames < 1 or self.codec_threads < 1:
+            raise ValueError("Video batch size and codec thread count must be positive")
+
+    @property
+    def encoder_pixel_format(self) -> str:
+        """Resolve a pixel format only for the decode/encode path."""
+        return self.pixel_format or ("yuvj420p" if self.codec == "mjpeg" else "yuv420p")
 
 
 @dataclass(frozen=True)

@@ -68,6 +68,13 @@ package installed (or load the same configured local module); an API mismatch
 fails before source data is opened. Each worker reconstructs the source from
 this JSON contract without pickling live objects.
 
+Output image encoding is separate from `SourceSpec`: the four CLI options
+`--video-codec`, `--video-pixel-format`, `--video-batch-frames`, and
+`--video-codec-threads` belong to `WorkerConfig.video_encoding`. Workers restore
+the nested typed config and preflight their local encoder. Slurm/Kubernetes CPU
+guards account for per-encoder threads for actual transcodes. Missing fields in
+old manifests retain default behavior. See [VIDEO_ENCODING.md](VIDEO_ENCODING.md).
+
 ### Episode subset boundary
 
 Each task owns a nonempty contiguous half-open interval `[start, stop)`. The

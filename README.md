@@ -97,6 +97,20 @@ letools convert /data/hdf5 /data/soft-fold-v30 \
   --source-format hdf5 --preset soft-fold --to v3.0 --auto
 ```
 
+JPEG image sources default to fast, packet-preserving MJPEG. Request another
+encoder and pixel format from the CLI when smaller lossy video is preferred:
+
+```bash
+letools convert /data/hdf5 /data/compact-v30 \
+  --source-format hdf5 --preset soft-fold --to v3.0 --auto \
+  --video-codec mpeg4 --video-pixel-format yuv420p \
+  --video-batch-frames 48 --video-codec-threads 2
+```
+
+The same four options work with `plan` and `dist plan`. See
+[video encoding](docs/VIDEO_ENCODING.md) for encoder availability, automatic
+pixel formats, CPU budgets, Python APIs, and the existing-MP4 remux boundary.
+
 Merge physical datasets without routing them through the generic source and
 backend path:
 
@@ -216,6 +230,7 @@ The full documentation is published at **[xieweikai.github.io/letools](https://x
 | Same-version high-speed merge | [Merge engine](docs/MERGE.md) |
 | Local, Slurm, and Kubernetes execution | [Distributed conversion](docs/DISTRIBUTED.md) |
 | HDF5 mappings and preset TUI | [HDF5 presets](docs/HDF5_PRESETS.md) |
+| Video codec, pixel format, batches, and threads | [Video encoding](docs/VIDEO_ENCODING.md) |
 | Quality checks and repair | [Dataset Doctor](docs/DOCTOR.md) |
 | Local and Hub visualization | [Dataset Visualizer](docs/VISUALIZER.md) |
 | Reproducible performance evidence | [Performance](docs/PERFORMANCE.md) |

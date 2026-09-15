@@ -29,7 +29,9 @@ from .types import (
 )
 
 
-def _restore_source_episode_stats(source, destination: Path, target_version: str) -> None:
+def _restore_source_episode_stats(
+    source, destination: Path, target_version: str
+) -> None:
     """Restore source episode statistics after the part merge remaps row indices.
 
     The specialized merge engine correctly recomputes system-column statistics
@@ -49,7 +51,11 @@ def _restore_source_episode_stats(source, destination: Path, target_version: str
 
     episode_path = destination / "meta/episodes/chunk-000/file-000.parquet"
     table = pq.read_table(episode_path)
-    columns = {name: table[name] for name in table.column_names if not name.startswith("stats/")}
+    columns = {
+        name: table[name]
+        for name in table.column_names
+        if not name.startswith("stats/")
+    }
     stats_columns: dict[str, list[object]] = {}
     for row_index, episode_index in enumerate(table["episode_index"].to_pylist()):
         flattened = flatten_stats(source_stats[int(episode_index)])
@@ -67,7 +73,9 @@ def _restore_source_episode_stats(source, destination: Path, target_version: str
     pq.write_table(pa.Table.from_arrays(arrays, names=names), episode_path)
     write_json(
         destination / "meta/stats.json",
-        aggregate_episode_stats([source_stats[index] for index in range(len(source.episodes))]),
+        aggregate_episode_stats(
+            [source_stats[index] for index in range(len(source.episodes))]
+        ),
     )
 
 
@@ -100,7 +108,11 @@ def _result_matches(
 def _write_error(store: JobStore, task_id: int, error: BaseException) -> None:
     store._atomic_json(  # noqa: SLF001 - executor and store form one state boundary
         store.root / "errors" / f"task-{task_id:06d}.json",
-        {"type": type(error).__name__, "message": str(error), "host": socket.gethostname()},
+        {
+            "type": type(error).__name__,
+            "message": str(error),
+            "host": socket.gethostname(),
+        },
     )
 
 
@@ -141,6 +153,8 @@ def run_distributed_task(
             part,
             plan.target_version,
             config=ConversionConfig(
+                video_encoding=plan.worker.video_encoding
+                or ConversionConfig().video_encoding,
                 workers=plan.worker.workers,
                 video_workers=plan.worker.video_workers,
                 data_file_size_mb=plan.worker.data_file_size_mb,
@@ -197,7 +211,9 @@ def _validate_final_output(root: Path, plan: DistributedPlan) -> None:
     if plan.validate:
         report = validate_dataset(root, deep=True)
         if not report.valid:
-            raise ValueError("Distributed output is invalid: " + "; ".join(report.errors))
+            raise ValueError(
+                "Distributed output is invalid: " + "; ".join(report.errors)
+            )
     info = json.loads((root / "meta" / "info.json").read_text())
     if int(info["total_episodes"]) != plan.total_episodes:
         raise ValueError("Published episode total differs from the plan")
@@ -260,9 +276,7 @@ def try_finalize_distributed_job(job_dir: str | Path) -> DistributedStatus:
         parts = [Path(item.part) for item in results]
         if not all(_part_is_valid(part, plan.validate) for part in parts):
             raise ValueError("At least one distributed part is missing or invalid")
-        final = destination.with_name(
-            f".{destination.name}.letools-dist-{plan.job_id}"
-        )
+        final = destination.with_name(f".{destination.name}.letools-dist-{plan.job_id}")
         _build_final_output(store, parts, final)
         _restore_source_episode_stats(
             open_source_spec(plan.source), final, plan.target_version

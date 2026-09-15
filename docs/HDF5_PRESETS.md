@@ -1,5 +1,11 @@
 # HDF5 mapping presets
 
+Output video encoding is independent of a source mapping. Choose codec, pixel
+format, batch size, and encoder threads with the shared CLI video options in
+[VIDEO_ENCODING.md](VIDEO_ENCODING.md); do not embed those choices in a preset.
+The same preset can therefore produce packet-preserving MJPEG or explicitly
+requested lossy video without changing its data semantics.
+
 ## Purpose
 
 HDF5 stores arrays and groups but does not define robotics semantics. A preset

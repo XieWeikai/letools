@@ -46,9 +46,15 @@ class LeRobotV21Backend(DatasetBackend):
         info.pop("data_files_size_in_mb", None)
         info.pop("video_files_size_in_mb", None)
         info["chunks_size"] = config.chunks_size
-        info["total_chunks"] = (source.metadata.total_episodes + config.chunks_size - 1) // config.chunks_size
-        info["total_videos"] = source.metadata.total_episodes * len(source.metadata.video_keys)
-        info["data_path"] = "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet"
+        info["total_chunks"] = (
+            source.metadata.total_episodes + config.chunks_size - 1
+        ) // config.chunks_size
+        info["total_videos"] = source.metadata.total_episodes * len(
+            source.metadata.video_keys
+        )
+        info["data_path"] = (
+            "data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}.parquet"
+        )
         info["video_path"] = (
             "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.mp4"
             if source.metadata.video_keys
@@ -79,7 +85,11 @@ class LeRobotV21Backend(DatasetBackend):
         write_jsonl(
             destination / "meta/episodes.jsonl",
             [
-                {"episode_index": episode.index, "tasks": list(episode.tasks), "length": episode.length}
+                {
+                    "episode_index": episode.index,
+                    "tasks": list(episode.tasks),
+                    "length": episode.length,
+                }
                 for episode in source.episodes
             ],
         )
@@ -118,11 +128,15 @@ class LeRobotV21Backend(DatasetBackend):
         # source capability so one large shard does not pin a single worker;
         # HDF5/AgileX profiles have one resource per episode and retain the
         # existing locality-group scheduling.
-        data_jobs = list(source.episodes) if shared_shard else list(data_groups.values())
+        data_jobs = (
+            list(source.episodes) if shared_shard else list(data_groups.values())
+        )
         writer = write_episode if shared_shard else write_data_group
 
         data_started = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=min(config.workers, len(data_jobs) or 1)) as pool:
+        with ThreadPoolExecutor(
+            max_workers=min(config.workers, len(data_jobs) or 1)
+        ) as pool:
             list(pool.map(writer, data_jobs))
         recorder.add(
             "data_execute", time.perf_counter() - data_started, tasks=len(data_jobs)
@@ -162,4 +176,21 @@ class LeRobotV21Backend(DatasetBackend):
         recorder.add(
             "video_execute", time.perf_counter() - video_started, tasks=len(jobs)
         )
-        recorder.add("metadata_finalize", 0.0)
+        metadata_started = time.perf_counter()
+        encoded_metadata = False
+        for key in source.metadata.video_keys:
+            if source.media_profile(source.episodes[0], key).requires_encoding:
+                encoded_metadata = True
+                output = destination / info["video_path"].format(
+                    episode_chunk=0, episode_index=0, video_key=key
+                )
+                apply_encoding_metadata(
+                    info["features"][key],
+                    source.metadata.fps,
+                    config.video_encoding,
+                    include_legacy_video_info=True,
+                    output=output,
+                )
+        if encoded_metadata:
+            write_json(destination / "meta/info.json", info)
+        recorder.add("metadata_finalize", time.perf_counter() - metadata_started)

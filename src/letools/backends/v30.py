@@ -8,11 +8,14 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from letools._arrow import canonical_data_schema, cast_data_table, normalize_feature_shapes
+from letools._arrow import (
+    canonical_data_schema,
+    cast_data_table,
+    normalize_feature_shapes,
+)
 from letools._io import write_json
 from letools._media_executor import (
     GroupMediaJob,
@@ -28,7 +31,9 @@ from letools.plugins import DatasetSource
 from letools.telemetry import StageRecorder
 
 
-def _groups_by_size(items: list[Episode], sizes: list[float], limit: int) -> list[list[Episode]]:
+def _groups_by_size(
+    items: list[Episode], sizes: list[float], limit: int
+) -> list[list[Episode]]:
     groups: list[list[Episode]] = []
     current: list[Episode] = []
     current_size = 0.0
@@ -110,7 +115,9 @@ class LeRobotV30Backend(DatasetBackend):
             source.data_profile(episode).episode_logical_bytes / (1024**2)
             for episode in source.episodes
         ]
-        data_groups = _groups_by_size(list(source.episodes), episode_sizes, config.data_file_size_mb)
+        data_groups = _groups_by_size(
+            list(source.episodes), episode_sizes, config.data_file_size_mb
+        )
         data_schema = canonical_data_schema(source)
         rows: dict[int, dict[str, Any]] = {}
         global_offset = 0
@@ -134,11 +141,16 @@ class LeRobotV30Backend(DatasetBackend):
                 chunk_index=chunk_index, file_index=file_index
             )
             path.parent.mkdir(parents=True, exist_ok=True)
-            tables = [cast_data_table(table, data_schema) for table in source.read_episodes(group)]
+            tables = [
+                cast_data_table(table, data_schema)
+                for table in source.read_episodes(group)
+            ]
             pq.write_table(pa.concat_tables(tables), path)
 
         data_started = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=min(config.workers, len(data_groups) or 1)) as pool:
+        with ThreadPoolExecutor(
+            max_workers=min(config.workers, len(data_groups) or 1)
+        ) as pool:
             list(pool.map(write_data_group, enumerate(data_groups)))
         recorder.add(
             "data_execute", time.perf_counter() - data_started, tasks=len(data_groups)
@@ -205,6 +217,22 @@ class LeRobotV30Backend(DatasetBackend):
 
         metadata_started = time.perf_counter()
         episode_rows = []
+        encoded_metadata = False
+        for key in source.metadata.video_keys:
+            if source.media_profile(source.episodes[0], key).requires_encoding:
+                encoded_metadata = True
+                output = destination / info["video_path"].format(
+                    chunk_index=0, file_index=0, video_key=key
+                )
+                apply_encoding_metadata(
+                    info["features"][key],
+                    source.metadata.fps,
+                    config.video_encoding,
+                    include_legacy_video_info=False,
+                    output=output,
+                )
+        if encoded_metadata:
+            write_json(destination / "meta/info.json", info)
         for episode in source.episodes:
             row = rows[episode.index]
             row.update(

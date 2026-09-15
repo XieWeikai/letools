@@ -12,6 +12,8 @@ performance evidence:
   validation, HDF5 mappings, custom sources, Slurm operation, and troubleshooting.
 - [Installation](INSTALLATION.md): direct command setup, uv tool internals,
   editable and locked development modes, updates, removal, and Slurm visibility.
+- [Video encoding](VIDEO_ENCODING.md): CLI codec/pixel options, frame batches,
+  encoder threads, planner cache, and portable worker configuration.
 - [Dataset Doctor](DOCTOR.md): all 12 checks, CI output, repair, trim, scoring,
   policy gates, merge checks, safety, and Visualizer embedding.
 - [Dataset Visualizer](VISUALIZER.md): local and Hub operation, Bun cache setup,

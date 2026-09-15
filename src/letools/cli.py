@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from letools.conversion import ConversionConfig, convert
+from letools.conversion_types import VideoEncodingConfig
 from letools.doctor import environment_report
 from letools.distributed import (
     KubernetesScheduler,
@@ -86,6 +87,38 @@ def _open_cli_source(args: argparse.Namespace) -> DatasetSource:
     return provider.create(args.source, args, context)
 
 
+def _add_video_encoding_options(parser: argparse.ArgumentParser) -> None:
+    """Common output policy, independent of the selected source provider."""
+    parser.add_argument(
+        "--video-codec", help="frame encoder (default: mjpeg); not MP4 transcoding"
+    )
+    parser.add_argument(
+        "--video-pixel-format",
+        help="target pixel format (default: preserve JPEG, otherwise codec default)",
+    )
+    parser.add_argument(
+        "--video-batch-frames", type=int, help="frames read per batch (default: 48)"
+    )
+    parser.add_argument(
+        "--video-codec-threads", type=int, help="threads per encoder (default: 1)"
+    )
+
+
+def _video_encoding(args: argparse.Namespace) -> VideoEncodingConfig | None:
+    values = {
+        "codec": args.video_codec,
+        "pixel_format": args.video_pixel_format,
+        "batch_frames": args.video_batch_frames,
+        "codec_threads": args.video_codec_threads,
+    }
+    # None distinguishes omitted options from explicit options on remux input.
+    return (
+        VideoEncodingConfig(**{k: v for k, v in values.items() if v is not None})
+        if any(v is not None for v in values.values())
+        else None
+    )
+
+
 def _distributed_source_spec(args: argparse.Namespace) -> SourceSpec:
     """Resolve provider options into a portable, self-contained worker spec."""
 
@@ -114,7 +147,10 @@ def build_parser(
     conversion.add_argument("source", type=Path)
     conversion.add_argument("destination", type=Path)
     _add_source_options(conversion, source_provider)
-    conversion.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
+    _add_video_encoding_options(conversion)
+    conversion.add_argument(
+        "--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"]
+    )
     conversion.add_argument("--workers", type=int)
     conversion.add_argument("--video-workers", type=int)
     conversion.add_argument("--data-file-size-mb", type=int)
@@ -129,6 +165,7 @@ def build_parser(
     planning.add_argument("source", type=Path)
     planning.add_argument("destination", type=Path)
     _add_source_options(planning, source_provider)
+    _add_video_encoding_options(planning)
     planning.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
     planning.add_argument("--workers", type=int)
     planning.add_argument("--video-workers", type=int)
@@ -150,7 +187,10 @@ def build_parser(
     dist_plan.add_argument("source", type=Path)
     dist_plan.add_argument("destination", type=Path)
     _add_source_options(dist_plan, source_provider)
-    dist_plan.add_argument("--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"])
+    _add_video_encoding_options(dist_plan)
+    dist_plan.add_argument(
+        "--to", required=True, choices=["v2.1", "v3.0", "2.1", "3.0"]
+    )
     dist_plan.add_argument("--job-dir", required=True, type=Path)
     partition = dist_plan.add_mutually_exclusive_group()
     partition.add_argument("--tasks", type=int)
@@ -179,7 +219,9 @@ def build_parser(
     dist_submit.add_argument("--pvc-claim")
     dist_submit.add_argument("--mount-path", default="/shared")
     dist_submit.add_argument(
-        "--render-only", action="store_true", help="write scheduler artifacts without submitting"
+        "--render-only",
+        action="store_true",
+        help="write scheduler artifacts without submitting",
     )
     dist_worker = distributed_commands.add_parser(
         "worker", help="Execute one manifest task (normally called by a scheduler)"
@@ -199,7 +241,9 @@ def build_parser(
     validation = commands.add_parser("validate", help="Validate a LeRobot dataset")
     validation.add_argument("dataset", type=Path)
     validation.add_argument("--deep", action="store_true")
-    comparison = commands.add_parser("compare", help="Compare two datasets semantically")
+    comparison = commands.add_parser(
+        "compare", help="Compare two datasets semantically"
+    )
     comparison.add_argument("left", type=Path)
     comparison.add_argument("right", type=Path)
     comparison.add_argument("--skip-data", action="store_true")
@@ -234,7 +278,8 @@ def build_parser(
         dest="visualizer_command", required=True
     )
     visualizer_setup = visualizer_commands.add_parser(
-        "setup", help="Prepare the pinned application and install locked Bun dependencies"
+        "setup",
+        help="Prepare the pinned application and install locked Bun dependencies",
     )
     visualizer_setup.add_argument("--cache-dir", type=Path)
     visualizer_setup.add_argument("--bun")
@@ -355,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
                 task_count=args.tasks,
                 episodes_per_task=args.episodes_per_task,
                 worker=WorkerConfig(
+                    video_encoding=_video_encoding(args),
                     workers=args.workers,
                     video_workers=args.video_workers,
                     data_file_size_mb=args.data_file_size_mb,
@@ -474,6 +520,7 @@ def main(argv: list[str] | None = None) -> int:
                 source,
                 args.destination,
                 args.to,
+                video_encoding=_video_encoding(args),
                 overrides=PerformanceOverrides(
                     workers=args.workers,
                     video_workers=args.video_workers,
@@ -492,15 +539,23 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             defaults = ConversionConfig()
+            encoding = _video_encoding(args)
+            if encoding is not None:
+                from letools._video import validate_source_encoding
+
+                validate_source_encoding(source, encoding, explicit=True)
             result = convert(
                 source,
                 args.destination,
                 args.to,
                 config=ConversionConfig(
+                    video_encoding=encoding or VideoEncodingConfig(),
                     workers=max(1, args.workers or defaults.workers),
                     video_workers=max(1, args.video_workers or defaults.video_workers),
-                    data_file_size_mb=args.data_file_size_mb or defaults.data_file_size_mb,
-                    video_file_size_mb=args.video_file_size_mb or defaults.video_file_size_mb,
+                    data_file_size_mb=args.data_file_size_mb
+                    or defaults.data_file_size_mb,
+                    video_file_size_mb=args.video_file_size_mb
+                    or defaults.video_file_size_mb,
                     overwrite=args.overwrite,
                     validate=not args.no_validate,
                 ),
@@ -513,6 +568,7 @@ def main(argv: list[str] | None = None) -> int:
             source,
             args.destination,
             args.to,
+            video_encoding=_video_encoding(args),
             overrides=PerformanceOverrides(
                 workers=args.workers,
                 video_workers=args.video_workers,

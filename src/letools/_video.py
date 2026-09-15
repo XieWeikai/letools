@@ -8,18 +8,22 @@ boundary and avoids per-packet Python callbacks on existing LeRobot videos.
 from __future__ import annotations
 
 import hashlib
+import io
 import shutil
 import tempfile
 from collections.abc import Sequence
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import av
 
 from letools import _native
 from letools.conversion_types import VideoEncodingConfig
 from letools.model import FrameSequence, MediaInput, VideoSlice
+
+if TYPE_CHECKING:
+    from letools.plugins import DatasetSource
 
 
 def video_duration(path: Path) -> float:
@@ -50,7 +54,9 @@ def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
     with tempfile.NamedTemporaryFile(suffix=output.suffix, delete=False) as handle:
         temporary = Path(handle.name)
     try:
-        source = av.open(str(listing_path), mode="r", format="concat", options={"safe": "0"})
+        source = av.open(
+            str(listing_path), mode="r", format="concat", options={"safe": "0"}
+        )
         destination = av.open(str(temporary), mode="w")
         streams = {}
         for stream in source.streams:
@@ -110,7 +116,9 @@ def split_video(
         for stream in source.streams
         if stream.type in {"video", "audio", "subtitle"}
     }
-    time_bases = {index: float(stream.time_base) for index, stream in input_streams.items()}
+    time_bases = {
+        index: float(stream.time_base) for index, stream in input_streams.items()
+    }
     current_index = -1
     destination = None
     stream_map = {}
@@ -133,7 +141,10 @@ def split_video(
                 continue
             timestamp_value = packet.pts if packet.pts is not None else packet.dts
             timestamp = timestamp_value * time_bases[packet.stream.index]
-            while current_index + 1 < len(outputs) and timestamp >= outputs[current_index + 1][0].start - 1e-7:
+            while (
+                current_index + 1 < len(outputs)
+                and timestamp >= outputs[current_index + 1][0].start - 1e-7
+            ):
                 close_current()
                 current_index += 1
                 video_slice, target_path = outputs[current_index]
@@ -152,7 +163,9 @@ def split_video(
                     target = destination.add_stream_from_template(stream, opaque=True)
                     target.time_base = stream.time_base
                     stream_map[index] = target
-                    timestamp_offsets[index] = int(round(video_slice.start / time_bases[index]))
+                    timestamp_offsets[index] = int(
+                        round(video_slice.start / time_bases[index])
+                    )
             if current_index < 0 or destination is None:
                 continue
             stream_index = packet.stream.index
@@ -181,15 +194,104 @@ def media_duration(media: MediaInput, fps: int) -> float:
     return media.frame_count / fps
 
 
+def jpeg_passthrough(media: FrameSequence, encoding: VideoEncodingConfig) -> bool:
+    """Explicit pixel conversion must not be silently treated as packet muxing.
+
+    Default JPEG input requires no probe or extra source open. Explicit pixel
+    requests inspect one representative image per sequence; plugins must keep
+    each sequence's dimensions and image format consistent.
+    """
+    if encoding.codec != "mjpeg" or media.encoded_format.lower() not in {"jpeg", "jpg"}:
+        return False
+    if encoding.pixel_format is None:
+        return True
+    decoder = av.CodecContext.create("mjpeg", "r")
+    frames = decoder.decode(av.Packet(media.read_batch(0, 1)[0]))
+    return len(frames) == 1 and frames[0].format.name == encoding.pixel_format
+
+
+def validate_source_encoding(
+    source: DatasetSource, encoding: VideoEncodingConfig, *, explicit: bool = False
+) -> tuple[int, int]:
+    """Preflight frame encoders and return per-job CPU and memory estimates.
+
+    Only representative media are inspected, never the complete payload. The
+    conservative decode/encoder buffer estimate supplements the planner's
+    compressed-input accounting. Remux-only sources retain their old path.
+    """
+    cpu, memory, found = 1, 0, False
+    if not source.episodes:
+        return cpu, memory
+    for key in source.metadata.video_keys:
+        media = source.media_input(source.episodes[0], key)
+        if not isinstance(media, FrameSequence):
+            continue
+        found = True
+        if jpeg_passthrough(media, encoding):
+            # Muxing retains the compressed batch, even though no pixel frames
+            # or codec threads are active. Large batch overrides still consume
+            # memory and must be visible to the planner.
+            compressed_batch = (
+                media.estimated_size_bytes
+                * min(encoding.batch_frames, media.frame_count)
+                // max(1, media.frame_count)
+            )
+            memory = max(memory, 64 * 1024**2 + compressed_batch)
+            continue
+        try:
+            codec = av.Codec(encoding.codec, "w")
+            formats = codec.video_formats
+            if formats and encoding.encoder_pixel_format not in {
+                f.name for f in formats
+            }:
+                raise ValueError(
+                    f"unsupported pixel format {encoding.encoder_pixel_format}"
+                )
+            # Check MP4 codec/container compatibility without writing a file.
+            with av.open(io.BytesIO(), mode="w", format="mp4") as output:
+                stream = output.add_stream(encoding.codec, rate=source.metadata.fps)
+                stream.width, stream.height = media.width, media.height
+                stream.pix_fmt = encoding.encoder_pixel_format
+                stream.codec_context.thread_count = encoding.codec_threads
+                stream.codec_context.max_b_frames = 0
+                output.start_encoding()
+        except Exception as error:
+            raise ValueError(
+                f"Cannot use video encoder {encoding.codec!r} with {encoding.encoder_pixel_format!r}: {error}"
+            ) from error
+        cpu = max(cpu, encoding.codec_threads)
+        memory = max(
+            memory,
+            media.width
+            * media.height
+            * 4
+            * (encoding.batch_frames + 16 + encoding.codec_threads)
+            + 64 * 1024**2,
+        )
+    if explicit and not found:
+        raise ValueError(
+            "Video encoding options require image-frame input; they are not applicable to remux-only or video-free sources"
+        )
+    return cpu, memory
+
+
 def apply_encoding_metadata(
     feature: dict[str, Any],
     fps: int,
     encoding: VideoEncodingConfig,
     *,
     include_legacy_video_info: bool,
+    output: Path | None = None,
 ) -> None:
     """Record the actual encoded stream settings in a target video feature."""
 
+    codec, pixel_format = encoding.codec, encoding.encoder_pixel_format
+    if output is not None:
+        # Encoder implementation names (libx264) and payload formats (h264)
+        # differ. Read the actual published stream, including untouched JPEGs.
+        with av.open(str(output)) as container:
+            stream = container.streams.video[0]
+            codec, pixel_format = stream.codec_context.name, stream.pix_fmt
     namespaces = [feature.setdefault("info", {})]
     if include_legacy_video_info or "video_info" in feature:
         namespaces.append(feature.setdefault("video_info", {}))
@@ -197,8 +299,8 @@ def apply_encoding_metadata(
         metadata.update(
             {
                 "video.fps": fps,
-                "video.codec": encoding.codec,
-                "video.pix_fmt": encoding.pixel_format,
+                "video.codec": codec,
+                "video.pix_fmt": pixel_format,
                 "video.is_depth_map": False,
                 "has_audio": False,
             }
@@ -224,12 +326,17 @@ def _encode_frame_sequences(
     width, height = inputs[0].width, inputs[0].height
     formats = {sequence.encoded_format.lower() for sequence in inputs}
     if len(formats) != 1:
-        raise ValueError(f"A video shard cannot mix encoded image formats: {sorted(formats)}")
+        raise ValueError(
+            f"A video shard cannot mix encoded image formats: {sorted(formats)}"
+        )
     if any((sequence.width, sequence.height) != (width, height) for sequence in inputs):
         raise ValueError("A video shard cannot mix frame dimensions")
 
-    decoder_name = {"jpg": "mjpeg", "jpeg": "mjpeg"}.get(next(iter(formats)), next(iter(formats)))
+    decoder_name = {"jpg": "mjpeg", "jpeg": "mjpeg"}.get(
+        next(iter(formats)), next(iter(formats))
+    )
     decoder = av.CodecContext.create(decoder_name, "r")
+    decoder.thread_count = 1
     output.parent.mkdir(parents=True, exist_ok=True)
     if local_staging:
         with tempfile.NamedTemporaryFile(suffix=output.suffix, delete=False) as handle:
@@ -243,8 +350,12 @@ def _encode_frame_sequences(
         stream = container.add_stream(encoding.codec, rate=fps)
         stream.width = width
         stream.height = height
-        stream.pix_fmt = encoding.pixel_format
+        stream.pix_fmt = encoding.encoder_pixel_format
         stream.codec_context.thread_count = encoding.codec_threads
+        # Episode boundaries must remain independently decodable after a later
+        # v3 -> v2.1 packet split. Disable reordering and start each episode with
+        # an intra frame, while allowing compression within each episode.
+        stream.codec_context.max_b_frames = 0
         time_base = Fraction(1, fps)
         frame_index = 0
         for sequence in inputs:
@@ -263,9 +374,16 @@ def _encode_frame_sequences(
                         )
                     frame = decoded[0]
                     if (frame.width, frame.height) != (width, height):
-                        raise ValueError("Decoded frame dimensions do not match the media profile")
+                        raise ValueError(
+                            "Decoded frame dimensions do not match the media profile"
+                        )
                     frame.pts = frame_index
                     frame.time_base = time_base
+                    frame.pict_type = (
+                        av.video.frame.PictureType.I
+                        if produced == 0
+                        else av.video.frame.PictureType.NONE
+                    )
                     for packet in stream.encode(frame):
                         container.mux(packet)
                     frame_index += 1
@@ -321,7 +439,7 @@ def _mux_jpeg_sequences(
         stream = container.add_stream("mjpeg", rate=fps)
         stream.width = width
         stream.height = height
-        stream.pix_fmt = encoding.pixel_format
+        stream.pix_fmt = encoding.encoder_pixel_format
         time_base = Fraction(1, fps)
         stream.time_base = time_base
         frame_index = 0
@@ -377,7 +495,11 @@ def write_media_group(
         return
     if all(isinstance(media, FrameSequence) for media in inputs):
         formats = {media.encoded_format.lower() for media in inputs}
-        if encoding.codec == "mjpeg" and formats <= {"jpg", "jpeg"}:
+        if (
+            encoding.codec == "mjpeg"
+            and formats <= {"jpg", "jpeg"}
+            and all(jpeg_passthrough(media, encoding) for media in inputs)
+        ):
             _mux_jpeg_sequences(
                 inputs, output, fps, encoding, local_staging=local_staging
             )

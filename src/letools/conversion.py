@@ -14,6 +14,7 @@ from pathlib import Path
 
 from letools.backends import LeRobotV21Backend, LeRobotV30Backend
 from letools.conversion_types import ConversionConfig, ConversionResult
+from letools._video import validate_source_encoding
 from letools.plugins import DatasetSource, open_dataset
 from letools.telemetry import StageRecorder
 
@@ -48,6 +49,7 @@ def convert(
     recorder = StageRecorder()
     with recorder.measure("source_open"):
         dataset = open_dataset(source) if isinstance(source, (str, Path)) else source
+        validate_source_encoding(dataset, config.video_encoding)
     with recorder.measure("staging_prepare"):
         destination = Path(destination).resolve()
         target_version = _normalize_version(target_version)
@@ -55,8 +57,12 @@ def convert(
             raise ValueError(f"Source is already {target_version}")
         if destination.exists() and not config.overwrite:
             raise FileExistsError(f"Destination already exists: {destination}")
-        backend = LeRobotV21Backend() if target_version == "v2.1" else LeRobotV30Backend()
-        staging = destination.with_name(f".{destination.name}.letools-{uuid.uuid4().hex}")
+        backend = (
+            LeRobotV21Backend() if target_version == "v2.1" else LeRobotV30Backend()
+        )
+        staging = destination.with_name(
+            f".{destination.name}.letools-{uuid.uuid4().hex}"
+        )
     try:
         backend.write(dataset, staging, config, recorder)
         if config.validate:
@@ -65,7 +71,9 @@ def convert(
             with recorder.measure("conversion_validate"):
                 report = validate_dataset(staging, deep=False)
                 if not report.valid:
-                    raise ValueError("Converted dataset is invalid: " + "; ".join(report.errors))
+                    raise ValueError(
+                        "Converted dataset is invalid: " + "; ".join(report.errors)
+                    )
         with recorder.measure("publish_cleanup"):
             if destination.exists():
                 shutil.rmtree(destination)

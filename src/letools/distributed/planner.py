@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 from letools.conversion import _normalize_version
+from letools.conversion_types import VideoEncodingConfig
+from letools._video import validate_source_encoding
 
 from .source import open_source_spec
 from .state import JobStore
@@ -41,6 +44,12 @@ def plan_distributed_conversion(
     if worker.workers <= 0 or worker.video_workers <= 0:
         raise ValueError("Worker counts must be positive")
     dataset = open_source_spec(source)
+    encoding_cpu, _ = validate_source_encoding(
+        dataset,
+        worker.video_encoding or VideoEncodingConfig(),
+        explicit=worker.video_encoding is not None,
+    )
+    worker = replace(worker, video_cpu_per_worker=encoding_cpu)
     target = _normalize_version(target_version)
     if dataset.metadata.version == target:
         raise ValueError(f"Source is already {target}")
@@ -71,7 +80,9 @@ def plan_distributed_conversion(
                 task_id=task_id,
                 episode_start=start,
                 episode_stop=stop,
-                expected_frames=sum(item.length for item in dataset.episodes[start:stop]),
+                expected_frames=sum(
+                    item.length for item in dataset.episodes[start:stop]
+                ),
             )
         )
     plan = DistributedPlan(
