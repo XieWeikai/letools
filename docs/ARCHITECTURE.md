@@ -585,6 +585,15 @@ For image output, the backend reads a representative output stream to record
 the actual codec, pixel format, FPS, and lack of audio in feature metadata. Remux-only conversions
 preserve the source codec metadata unchanged.
 
+When the optional native wheel exposes `mjpeg-batch-mux`, the direct JPEG path
+keeps one MP4/FFmpeg context in Rust and crosses the Python boundary once per
+source batch rather than once per frame. Python continues to own source
+iteration, batch-length checks, and transaction cleanup. Rust receives owned
+Python `bytes`, borrows each payload only for its synchronous packet write, and
+never retains a Python buffer. Wheels without this capability use the PyAV
+implementation with identical packet and timestamp semantics. Pixel conversion
+and non-MJPEG codecs never enter this primitive.
+
 `VideoEncodingConfig` owns codec/pixel-format policy and batch/encoder-thread
 controls. Shared CLI arguments create this config for `convert`, `plan`, and
 `dist plan`; SourceProvider options remain exclusively about source semantics.

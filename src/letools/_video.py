@@ -426,6 +426,45 @@ def _mux_jpeg_sequences(
     if any((sequence.width, sequence.height) != (width, height) for sequence in inputs):
         raise ValueError("A video shard cannot mix frame dimensions")
 
+    if _native.mjpeg_batch_mux_available():
+        muxer = _native.mjpeg_muxer(
+            output,
+            width,
+            height,
+            fps,
+            encoding.encoder_pixel_format,
+            atomic_output=local_staging,
+        )
+        completed = False
+        try:
+            for sequence in inputs:
+                produced = 0
+                for batch in sequence.iter_batches(encoding.batch_frames):
+                    expected = min(
+                        encoding.batch_frames, sequence.frame_count - produced
+                    )
+                    if len(batch) != expected:
+                        raise ValueError(
+                            f"Frame source returned {len(batch)} frames for a batch of {expected}"
+                        )
+                    # abi3-py39 has no stable buffer-protocol API. Materialize
+                    # one owned bytes object per frame, then let Rust borrow it
+                    # synchronously without constructing a PyAV Packet.
+                    written = muxer.write_batch(tuple(bytes(frame) for frame in batch))
+                    if written != expected:
+                        raise ValueError(
+                            f"Native muxer wrote {written} frames for a batch of {expected}"
+                        )
+                    produced += written
+                if produced != sequence.frame_count:
+                    raise ValueError("Frame source ended before its declared frame count")
+            muxer.close()
+            completed = True
+            return
+        finally:
+            if not completed and not local_staging:
+                output.unlink(missing_ok=True)
+
     output.parent.mkdir(parents=True, exist_ok=True)
     if local_staging:
         with tempfile.NamedTemporaryFile(suffix=output.suffix, delete=False) as handle:

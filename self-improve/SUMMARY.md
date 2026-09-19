@@ -2,7 +2,7 @@
 
 Status: active
 
-Nineteen accepted optimizations are present on `/workspace/shrelic/letools/main`,
+Twenty accepted optimizations are present on the current acceptance history,
 including the six accepted HDF5-source optimizations. All conversions and full
 comparisons ran as single-node Slurm jobs within the protocol resource ceiling.
 The HDF5 source, preset tooling, documentation, and accepted performance work
@@ -16,6 +16,11 @@ Iteration 0047 was rejected because episode fan-out multiplied the v3 Arrow
 table cache by worker count (about 6x RSS), despite a faster data stage.
 Iteration 0048 fixes that specific issue with a shared current-shard cache and
 is accepted below.
+
+Iteration 0050 is accepted below. It moves the remaining direct-JPEG packet
+mux loop into a capability-gated Rust/FFmpeg primitive while retaining the
+portable PyAV implementation. Iterations 0051 and 0052 found no acceptable
+batch-size or encoder-thread policy change.
 
 ## Accepted optimizations
 
@@ -32,9 +37,38 @@ is accepted below.
 | `6f95db8` | Move packet payload digests into Rust | full comparison throughput 2.86x |
 | `167c06f` | Move FFmpeg concatenation into Rust | forward conversion throughput 2.05x |
 | `531432b` | Move episode video splitting into Rust | reverse conversion throughput 1.32x |
+| this commit | Batch direct MJPEG mux in Rust | HDF5 throughput +51.44% to v2.1, +5.19% to v3.0 on JuiceFS |
 
 Each percentage compares the candidate median with the current-main baseline
 for that iteration. Results from different workloads are not multiplied.
+
+## Iteration 0050: native batched MJPEG mux
+
+The accepted primitive retains one FFmpeg MP4 context in Rust and receives a
+batch of encoded JPEG `bytes` per Python call. This removes per-frame PyAV
+packet creation and Python/FFmpeg crossings without changing the generic
+`FrameSequence`, source-provider, planner, or backend contracts. Old native
+wheels automatically use the original PyAV fallback; transcoding is unchanged.
+
+Five alternating baseline/candidate pairs ran on H800-node14 with 16 CPUs,
+64 GiB, eight data workers, eight video workers, `/data` input, and `/jfs`
+output. Both paths are the same JuiceFS mount.
+
+| Target | Baseline median | Candidate median | Throughput | CPU seconds | RSS | Threads |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| HDF5 -> v2.1 | 12.444 s | 8.217 s | +51.44% | 61.15 -> 32.41 | 1274 -> 1247 MiB | 141 -> 21 |
+| HDF5 -> v3.0 | 8.427 s | 8.011 s | +5.19% | 36.96 -> 34.75 | 1213 -> 1204 MiB | 141 -> 21 |
+
+Both outputs passed deep validation and complete 324-video payload comparison.
+The official LeRobot metadata and dataset loaders opened the v3.0 result and
+read its first, middle, and final samples. Full dagger remux and MPEG-4 controls
+were also deep-validated; their execution paths do not enter the new primitive.
+
+Iteration 0051 retained the 48-frame default: the best v2.1 alternative was
+only 2.55% faster with 13.0% more RSS, and v3.0 samples were order-confounded.
+Iteration 0052 rejected `4 video workers x 2 codec threads` after its first
+full HDF5 sample took 205.057 seconds versus 121.134 seconds for `8 x 1` and
+reduced observed CPU use from 7.74 to 4.65 cores. No planner policy changed.
 
 ## HDF5 source campaign
 

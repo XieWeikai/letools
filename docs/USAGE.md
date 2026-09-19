@@ -519,6 +519,11 @@ with `VideoEncodingConfig(codec="mpeg4", pixel_format="yuv420p", ...)`; non-JPEG
 sources and non-MJPEG codecs use the decode/encode fallback, and the selected
 encoder must exist in the installed PyAV runtime.
 
+An FFmpeg-enabled native wheel accelerates default JPEG packet mux in coarse
+batches. Capability detection is automatic and an older or portable wheel uses
+the semantically equivalent PyAV fallback; no source plugin configuration is
+needed.
+
 `VideoEncodingConfig.pixel_format=None` preserves the actual JPEG pixel format.
 An explicit different pixel format requires re-encoding. Actual output codec
 and pixel format are read back into metadata. Python `plan_conversion()` and

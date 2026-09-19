@@ -51,6 +51,12 @@ the source's actual pixel format and compressed payload. There is no pixel
 decode/re-encode or additional lossy compression. Output size remains close to
 the JPEG input size.
 
+FFmpeg-enabled native wheels batch this packet mux in Rust. The source reader
+and `--video-batch-frames` boundary remain in Python, so plugin behavior does
+not change; the optimization removes per-frame Python/PyAV mux calls. Portable
+wheels retain the PyAV fallback. Both paths preserve the original JPEG packet
+payloads.
+
 An explicit pixel format is a requirement, not a metadata label. With MJPEG,
 the writer probes a representative JPEG in each sequence: matching formats can
 still use direct mux; a mismatch sends the group through decode/encode. Other

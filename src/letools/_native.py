@@ -58,6 +58,30 @@ def video_staged_output_available() -> bool:
     return _native is not None and hasattr(_native, "split_video_staged")
 
 
+def mjpeg_batch_mux_available() -> bool:
+    """Report native stateful MJPEG packet-mux support."""
+
+    return _native is not None and hasattr(_native, "MjpegMuxer")
+
+
+def mjpeg_muxer(
+    output: Path,
+    width: int,
+    height: int,
+    fps: int,
+    pixel_format: str,
+    *,
+    atomic_output: bool,
+):
+    """Create the optional native writer behind a capability-checked boundary."""
+
+    if not mjpeg_batch_mux_available():
+        raise RuntimeError("native MJPEG batch mux capability is unavailable")
+    return _native.MjpegMuxer(
+        output, width, height, fps, pixel_format, atomic_output
+    )
+
+
 def file_sizes(paths: Sequence[Path]) -> list[int]:
     """Stat paths in input order, using parallel Rust when available."""
 

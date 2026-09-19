@@ -7,6 +7,8 @@
 
 use pyo3::exceptions::PyOSError;
 use pyo3::prelude::*;
+#[cfg(feature = "video")]
+use pyo3::types::PyBytes;
 use rayon::prelude::*;
 use std::fs;
 use std::fs::File;
@@ -23,6 +25,8 @@ use ffmpeg_next as ffmpeg;
 use sha2::{Digest, Sha256};
 #[cfg(feature = "video")]
 use std::io::Write;
+#[cfg(feature = "video")]
+use std::str::FromStr;
 
 #[pyfunction]
 /// Return file sizes in input order, performing independent stats in Rayon.
@@ -260,6 +264,148 @@ fn concat_videos(inputs: &[PathBuf], output: &PathBuf) -> Result<(), String> {
         .persist(output)
         .map_err(|error| format!("publish {}: {error}", output.display()))?;
     Ok(())
+}
+
+#[cfg(feature = "video")]
+#[pyclass(unsendable)]
+/// Stateful MP4 muxer that amortizes Python/FFmpeg crossings over JPEG batches.
+struct MjpegMuxer {
+    context: Option<ffmpeg::format::context::Output>,
+    temporary: Option<tempfile::TempPath>,
+    target: PathBuf,
+    input_time_base: ffmpeg::Rational,
+    output_time_base: ffmpeg::Rational,
+    frame_index: i64,
+}
+
+#[cfg(feature = "video")]
+#[pymethods]
+impl MjpegMuxer {
+    #[new]
+    fn new(
+        output: PathBuf,
+        width: u32,
+        height: u32,
+        fps: u32,
+        pixel_format: &str,
+        atomic_output: bool,
+    ) -> PyResult<Self> {
+        if width == 0 || height == 0 || fps == 0 {
+            return Err(PyOSError::new_err(
+                "MJPEG dimensions and FPS must be positive",
+            ));
+        }
+        ffmpeg::init().map_err(|error| PyOSError::new_err(error.to_string()))?;
+        let pixel = ffmpeg::format::Pixel::from_str(pixel_format)
+            .map_err(|error| PyOSError::new_err(error.to_string()))?;
+        let parent = output
+            .parent()
+            .ok_or_else(|| PyOSError::new_err(format!("{} has no parent", output.display())))?;
+        fs::create_dir_all(parent)
+            .map_err(|error| PyOSError::new_err(format!("create {}: {error}", parent.display())))?;
+        let temporary = if atomic_output {
+            Some(
+                tempfile::Builder::new()
+                    .suffix(".mp4")
+                    .tempfile_in(parent)
+                    .map_err(|error| PyOSError::new_err(error.to_string()))?
+                    .into_temp_path(),
+            )
+        } else {
+            None
+        };
+        let output_path = temporary.as_deref().unwrap_or(&output);
+        let mut context = ffmpeg::format::output(output_path)
+            .map_err(|error| PyOSError::new_err(error.to_string()))?;
+        let input_time_base = ffmpeg::Rational(1, fps as i32);
+        {
+            let mut stream = context
+                .add_stream(ffmpeg::encoder::find(ffmpeg::codec::Id::None))
+                .map_err(|error| PyOSError::new_err(error.to_string()))?;
+            stream.set_time_base(input_time_base);
+            stream.set_rate(ffmpeg::Rational(fps as i32, 1));
+            // Packets already contain complete JPEGs, so describe them without
+            // opening an encoder or copying their payload through an AVFrame.
+            unsafe {
+                let parameters = stream.parameters().as_mut_ptr();
+                (*parameters).codec_type = ffmpeg::ffi::AVMediaType::AVMEDIA_TYPE_VIDEO;
+                (*parameters).codec_id = ffmpeg::ffi::AVCodecID::AV_CODEC_ID_MJPEG;
+                (*parameters).codec_tag = 0;
+                (*parameters).width = width as i32;
+                (*parameters).height = height as i32;
+                (*parameters).format = ffmpeg::ffi::AVPixelFormat::from(pixel) as i32;
+            }
+        }
+        context
+            .write_header()
+            .map_err(|error| PyOSError::new_err(error.to_string()))?;
+        let output_time_base = context
+            .stream(0)
+            .ok_or_else(|| PyOSError::new_err("MJPEG output stream is missing"))?
+            .time_base();
+        Ok(Self {
+            context: Some(context),
+            temporary,
+            target: output,
+            input_time_base,
+            output_time_base,
+            frame_index: 0,
+        })
+    }
+
+    /// Write one bytes batch while holding each payload alive for FFmpeg.
+    fn write_batch(&mut self, frames: Vec<Bound<'_, PyBytes>>) -> PyResult<usize> {
+        let context = self
+            .context
+            .as_mut()
+            .ok_or_else(|| PyOSError::new_err("MJPEG muxer is already closed"))?;
+        let mut written = 0;
+        for item in frames {
+            let data = item.as_bytes();
+            if data.is_empty() {
+                return Err(PyOSError::new_err("JPEG frame buffer is empty"));
+            }
+            let packet = ffmpeg::Packet::borrow(data);
+            let packet_ptr =
+                ffmpeg::codec::packet::Ref::as_ptr(&packet) as *mut ffmpeg::ffi::AVPacket;
+            let code = unsafe {
+                (*packet_ptr).stream_index = 0;
+                (*packet_ptr).pts = self.frame_index;
+                (*packet_ptr).dts = self.frame_index;
+                (*packet_ptr).duration = 1;
+                (*packet_ptr).flags |= ffmpeg::ffi::AV_PKT_FLAG_KEY;
+                ffmpeg::ffi::av_packet_rescale_ts(
+                    packet_ptr,
+                    self.input_time_base.into(),
+                    self.output_time_base.into(),
+                );
+                ffmpeg::ffi::av_interleaved_write_frame(context.as_mut_ptr(), packet_ptr)
+            };
+            if code < 0 {
+                return Err(PyOSError::new_err(ffmpeg::Error::from(code).to_string()));
+            }
+            self.frame_index += 1;
+            written += 1;
+        }
+        Ok(written)
+    }
+
+    /// Finalize the MP4 and atomically publish it when requested by the caller.
+    fn close(&mut self) -> PyResult<()> {
+        let Some(mut context) = self.context.take() else {
+            return Ok(());
+        };
+        context
+            .write_trailer()
+            .map_err(|error| PyOSError::new_err(error.to_string()))?;
+        drop(context);
+        if let Some(temporary) = self.temporary.take() {
+            temporary.persist(&self.target).map_err(|error| {
+                PyOSError::new_err(format!("publish {}: {error}", self.target.display()))
+            })?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(feature = "video")]
@@ -510,6 +656,7 @@ fn build_info() -> (&'static str, Vec<&'static str>) {
         capabilities.push("video-concat");
         capabilities.push("video-split");
         capabilities.push("video-staged-output");
+        capabilities.push("mjpeg-batch-mux");
         capabilities
     };
     (env!("CARGO_PKG_VERSION"), capabilities)
@@ -523,5 +670,5 @@ mod letools_native {
 
     #[cfg(feature = "video")]
     #[pymodule_export]
-    use super::{concatenate_videos, packet_digests, split_video, split_video_staged};
+    use super::{MjpegMuxer, concatenate_videos, packet_digests, split_video, split_video_staged};
 }
