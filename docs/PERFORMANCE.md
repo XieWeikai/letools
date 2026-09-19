@@ -106,8 +106,38 @@ wall-time changes were -9.32% (v2.1) and -1.70% (v3.0), both faster candidates
 with no semantic change.
 The full correctness gate passed for all LeRobot and HDF5 outputs.
 
+### Current video branch versus main
+
+The current video branch tip `aed74b9` adds explicit frame-source encoding
+policy and the accepted native batched MJPEG mux. It was compared directly with
+`main@ca2235e`; successive optimization percentages are not multiplied.
+
+On the complete 20.7-GiB XVLA HDF5 source, Slurm job 3572 used 16 CPUs, 64 GiB,
+eight data/video workers, `/data` input, and `/jfs` output. Five interleaved
+main/current medians were:
+
+| Target | Main | Current | Throughput change | CPU seconds | Peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| HDF5 to v2.1 | 16.166 s | 12.784 s | **+26.45%** | 74.58 -> 47.78 | 1265 -> 1231 MiB |
+| HDF5 to v3.0 | 12.431 s | 12.212 s | +1.79%, within noise | 49.71 -> 48.73 | 1207 -> 1189 MiB |
+
+Both target pairs deep-validated and matched all 108 episodes, 125,412 frames,
+and 324 video payloads. Peak threads fell from 141 to 21. Samples were variable
+on the shared filesystem; the v3.0 difference is below the protocol's 3%
+measurable threshold.
+
+The complete dagger remux regression used node-local XFS, 16 CPUs, 64 GiB, and
+16 data/video workers. Five-pair medians were 21.543 -> 21.398 seconds (+0.68%
+throughput) for v2.1 to v3.0 and 21.776 -> 21.327 seconds (+2.11%) for v3.0 to
+v2.1. Both are within noise and establish no regression. Current outputs
+matched main and source semantics for all 3,457 episodes, 2,415,341 frames,
+and 10,371 encoded video payloads. See [video encoding](VIDEO_ENCODING.md) for
+raw sample spread, option scope, and the isolated Rust-primitive result.
+
 These numbers demonstrate other code paths and must not be compared directly
 with the 300-episode chart because their datasets and allocations differ.
+
+Earlier accepted operating points are retained below for historical context:
 
 | Operation | Workload | Allocation | Result |
 | --- | --- | --- | ---: |

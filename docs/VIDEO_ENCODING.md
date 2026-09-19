@@ -15,9 +15,11 @@ AgileX, and external providers returning `FrameSequence` media:
 | `--video-batch-frames N` | `48` | Maximum images requested in a source batch |
 | `--video-codec-threads N` | `1` | Threads requested inside each encoder |
 
-All numeric values must be positive. Encoder and pixel-format support depend
-on the FFmpeg linked into **PyAV**, not a system `ffmpeg` executable or the Rust
-wheel. Unsupported combinations fail during preflight before output staging.
+All numeric values must be positive. Re-encoding support depends on the FFmpeg
+linked into **PyAV**, not merely a system `ffmpeg` executable or the Rust wheel.
+The default direct-JPEG path uses the native wheel when it advertises
+`mjpeg-batch-mux` and otherwise falls back to PyAV. Unsupported re-encoding
+combinations fail during preflight before output staging.
 
 ```bash
 # Compact MPEG-4 output, with automatic worker planning.
@@ -155,52 +157,54 @@ cleanup, explicit JPEG pixel conversion, actual codec metadata, and subsequent
 v3-to-v2.1 packet splitting. Lossy fixture checks use decoded pixels with a
 stated tolerance; the default JPEG path is checked by packet equality.
 
-Large default-configuration regression runs compare against commit `ca2235e`:
-811 episodes / 693,669 frames for each LeRobot conversion direction, and the
-full XVLA `0930_10am_new` source (108 episodes / 125,412 frames) for HDF5 to both
-versions. Timed runs exclude validation; retained outputs undergo deep
-validation and full semantic/packet comparison afterward. Slurm jobs 3016 and
-3017 each request one node, 8 CPUs and 48 GiB, with 8 data workers and 3 video
-workers. Timing uses external CLI wall time, including startup, with one warmup
-per workload and alternating baseline/candidate runs. Caches are uncontrolled;
-these are not cold-cache storage benchmarks or codec compression benchmarks.
+Two September 19 follow-up jobs compare the current branch tip `aed74b9`
+directly with `main@ca2235e`. Timing uses external CLI wall time and excludes
+validation; retained outputs undergo deep validation and complete semantic and
+packet-payload comparison afterward. Caches are uncontrolled, so medians and
+raw spread are reported rather than presenting a cold-cache storage claim.
 
-Node-local `/scratch` input/output on H800-node14, five pairs, median results:
+Full HDF5 conversion used `/data` input and `/jfs` output on the same JuiceFS
+mount, one H800-node13 task, 16 CPUs, 64 GiB, eight data workers, and eight
+video workers. The source has 108 episodes, 125,412 trajectory frames, three
+cameras, 376,236 encoded JPEG frames, and 20.7 GiB of HDF5 input. Five
+main/current pairs produced:
 
-| Direction | Baseline seconds | Candidate seconds | Baseline episodes/s | Candidate episodes/s | Throughput change |
+| Target | Main median | Current median | Throughput change | CPU seconds | Peak RSS | Peak threads |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| v2.1 | 16.166 s, 6.681 ep/s | 12.784 s, 8.448 ep/s | **+26.45%** | 74.58 → 47.78 | 1265 → 1231 MiB | 141 → 21 |
+| v3.0 | 12.431 s, 8.688 ep/s | 12.212 s, 8.844 ep/s | +1.79%, within noise | 49.71 → 48.73 | 1207 → 1189 MiB | 141 → 21 |
+
+The five raw wall samples were `15.925, 15.142, 16.330, 22.407, 16.166`
+seconds for main and `11.076, 16.022, 11.827, 18.449, 12.784` for current when
+targeting v2.1. For v3.0 they were `12.431, 15.657, 12.172, 17.833, 11.508`
+and `11.861, 12.968, 12.212, 13.066, 11.317`. Both main/current output pairs
+passed deep validation and matched all 108 episodes, 125,412 frames, and 324
+encoded video payloads.
+
+The Rust primitive itself was accepted separately against the immediately
+preceding feature tip `8212e1f`, using the same HDF5 source and resource shape.
+Five JuiceFS pairs improved v2.1 from 12.444 to 8.217 seconds (+51.44%
+throughput) and v3.0 from 8.427 to 8.011 seconds (+5.19%). Those isolated
+iteration gains must not be multiplied by the cumulative current-versus-main
+numbers above.
+
+The LeRobot remux regression used the complete dagger datasets on
+allocation-local XFS: 3,457 episodes, 2,415,341 frames, and 10,371 videos. Job
+3555 ran on H800-node11 with 16 CPUs, 64 GiB, and 16 data/video workers:
+
+| Direction | Main median | Current median | Throughput change | CPU seconds | Peak RSS |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| LeRobot v2.1 → v3.0 | 10.356 | 10.589 | 78.316 | 76.590 | -2.20% |
-| LeRobot v3.0 → v2.1 | 4.827 | 4.794 | 168.008 | 169.158 | +0.68% |
-| HDF5 → v2.1 | 23.975 | 24.131 | 4.505 | 4.476 | -0.65% |
-| HDF5 → v3.0 | 15.773 | 14.904 | 6.847 | 7.247 | +5.83% |
+| v2.1 → v3.0 | 21.543 s, 160.472 ep/s | 21.398 s, 161.556 ep/s | +0.68%, within noise | 133.37 → 130.81 | 1134 → 1137 MiB |
+| v3.0 → v2.1 | 21.776 s, 158.750 ep/s | 21.327 s, 162.096 ep/s | +2.11%, within noise | 111.91 → 111.96 | 999 → 1045 MiB |
 
-Candidate median process-tree peak RSS was 434, 515, 629, and 605 MiB,
-respectively. Peak process/thread counts matched the baseline: 1/7, 1/13,
-5/35, and 5/35. CPU-time medians were 21.73, 10.88, 65.91, and 37.69 seconds,
-versus baseline 17.98, 10.83, 60.29, and 37.17. In particular, the forward
-LeRobot and HDF5-to-v2.1 runs do **not** establish unchanged CPU efficiency.
+Both current outputs deep-validated and compared equal to main and their
+opposite-version sources for every episode, Arrow frame, and video payload.
+The sub-3% timing differences establish no measurable remux regression, not a
+new remux optimization. The MJPEG primitive cannot run on this path because
+LeRobot sources provide `VideoSlice` inputs to the existing native concat/split
+operations.
 
-The preceding shared-filesystem run used `/jfs` input/output for LeRobot and
-`/data/share` input with `/jfs` output for HDF5. Its three-pair medians were:
-
-| Direction | Baseline seconds | Candidate seconds |
-| --- | ---: | ---: |
-| LeRobot v2.1 → v3.0 | 11.527 | 21.220 |
-| LeRobot v3.0 → v2.1 | 28.871 | 31.036 |
-| HDF5 → v2.1 | 32.535 | 33.639 |
-| HDF5 → v3.0 | 20.755 | 21.150 |
-
-Shared forward samples ranged from 10.748–19.516 seconds for baseline and
-10.549–27.348 seconds for candidate. Local forward samples also varied from
-7.717–13.819 and 9.480–15.006 seconds. Local replication did not reproduce the
-large shared forward slowdown; the added preflight span there was about
-31 microseconds. This is evidence against attributing that slowdown solely to
-preflight, not proof that storage contention caused it. These measurements
-support a small default-path wall-time difference locally, but neither a
-general speedup claim nor a guarantee of no regression on shared storage.
-
-Raw commands, per-run stages, process-tree metrics, validation and comparison
-JSON are archived locally in the ignored
-`self-improve/experiments/video-encoding-options/` directory (`local/` for the
-five-pair run). Feature acceptance is based on the correctness coverage above;
-this change is not presented as an accepted self-improvement optimization.
+Raw records are archived locally under the ignored
+`self-improve/experiments/20260919-docs-main-hdf/` and
+`20260919-main-remux-regression/` directories. The accepted optimization report
+is summarized in `self-improve/SUMMARY.md`.

@@ -63,6 +63,15 @@ succeeds. Existing output is preserved unless `--overwrite` is explicit.
 
     [:octicons-arrow-right-24: HDF5 presets](HDF5_PRESETS.md)
 
+-   :material-movie-cog:{ .lg .middle } **Control image encoding**
+
+    ---
+
+    Preserve JPEG packets by default or explicitly choose a codec, pixel
+    format, frame-batch size, and encoder thread count for image sources.
+
+    [:octicons-arrow-right-24: Video encoding](VIDEO_ENCODING.md)
+
 -   :material-server-network:{ .lg .middle } **Use a cluster**
 
     ---

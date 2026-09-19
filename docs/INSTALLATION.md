@@ -77,6 +77,14 @@ This is why `letools ...` works from any directory. `uv run letools ...` is only
 needed when deliberately running the project-local `.venv` without installing a
 user command.
 
+`letools doctor` reports the active native provider and its capabilities. An
+FFmpeg-enabled Linux wheel lists `mjpeg-batch-mux` in addition to video concat,
+split, and packet-digest capabilities. That capability accelerates the default
+JPEG-frame output path; if it is absent, LeTools automatically uses the
+semantically equivalent PyAV muxer. Explicit codecs such as MPEG-4 or H.264 are
+still selected from the FFmpeg libraries linked into PyAV, so the native
+capability does not imply that every PyAV encoder is available.
+
 ## Editable installation for repository work
 
 Developers who want the direct command to import Python source from the current

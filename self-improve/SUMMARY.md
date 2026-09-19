@@ -37,7 +37,7 @@ batch-size or encoder-thread policy change.
 | `6f95db8` | Move packet payload digests into Rust | full comparison throughput 2.86x |
 | `167c06f` | Move FFmpeg concatenation into Rust | forward conversion throughput 2.05x |
 | `531432b` | Move episode video splitting into Rust | reverse conversion throughput 1.32x |
-| this commit | Batch direct MJPEG mux in Rust | HDF5 throughput +51.44% to v2.1, +5.19% to v3.0 on JuiceFS |
+| `aed74b9` | Batch direct MJPEG mux in Rust | HDF5 throughput +51.44% to v2.1, +5.19% to v3.0 on JuiceFS |
 
 Each percentage compares the candidate median with the current-main baseline
 for that iteration. Results from different workloads are not multiplied.
@@ -106,11 +106,12 @@ frames, three JPEG cameras, 376236 encoded frames, and 20.7 GiB of HDF5 input.
 | `6716c7e` | Write grouped v3 shards directly to staging | no regression | +5.6% |
 | `d7e4469` | Isolate h5py media workers with safe spawn processes | 1.74x | 2.68x |
 
-At the final fixed eight-worker setting, v2.1 converts in an 11.70 second
-five-sample external-wall median (9.231 episodes/s, 10719 trajectory frames/s,
-and 32157 media frames/s). The final v3 target median is 7.15 seconds (15.105
-episodes/s, 17540 trajectory frames/s, and 52620 media frames/s). These are
-measured end-to-end CLI wall times and are not products of per-commit speedup
+At the process-isolation campaign's fixed eight-worker setting, v2.1 converted
+in an 11.70 second five-sample external-wall median (9.231 episodes/s, 10719
+trajectory frames/s, and 32157 media frames/s). Its v3 target median was 7.15
+seconds (15.105 episodes/s, 17540 trajectory frames/s, and 52620 media
+frames/s). These historical measurements predate iteration 0050, use a
+different allocation/cache state, and are not products of per-commit speedup
 ratios.
 
 Fourteen later HDF5 candidates were rejected: PyAV batch mux, batch 64 from the

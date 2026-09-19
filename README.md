@@ -110,6 +110,9 @@ letools convert /data/hdf5 /data/compact-v30 \
 The same four options work with `plan` and `dist plan`. See
 [video encoding](docs/VIDEO_ENCODING.md) for encoder availability, automatic
 pixel formats, CPU budgets, Python APIs, and the existing-MP4 remux boundary.
+FFmpeg-enabled native wheels batch the default packet-preserving MJPEG path in
+Rust; portable installations fall back to the same PyAV semantics automatically.
+Existing LeRobot MP4 inputs remain remux-only and reject explicit encoding flags.
 
 Merge physical datasets without routing them through the generic source and
 backend path:
@@ -161,6 +164,14 @@ LeRobot `d36d404`, using identical 100/256 MiB shard targets. Both outputs
 deep-validated, and semantic comparison matched all episodes, frames, and 900
 encoded video packet payloads. Read the [full methodology, samples, resource
 accounting, and limitations](docs/PERFORMANCE.md).
+
+At the current tip, a separate five-pair full XVLA comparison against
+`main@ca2235e` measured HDF5-to-v2.1 throughput **26.45% higher** and
+HDF5-to-v3.0 **1.79% higher** (within noise), while complete LeRobot v2.1/v3.0
+remux remained within 2.11% of main in both directions. Every retained output
+passed deep validation and full encoded-payload comparison. These workloads and
+allocations differ from the official chart; see [video encoding](docs/VIDEO_ENCODING.md)
+and [performance](docs/PERFORMANCE.md) rather than combining their ratios.
 
 ## Architecture
 

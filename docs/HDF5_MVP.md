@@ -91,9 +91,28 @@ same 21.7 GiB accounting value. Deep validation, complete Arrow/statistics and
 
 Five subsequent iterations tested larger frame batches, larger v3 video shards,
 direct v2.1 JuiceFS output, process-local HDF5 handle caching, and coarser process
-dispatch. None met the cross-target acceptance policy, so the table above is the
-final accepted implementation and throughput. Their reports are retained under
-the ignored `self-improve/iterations/0036` through `0040` archive directories.
+dispatch. None met the cross-target acceptance policy at that campaign point.
+Their reports are retained under the ignored `self-improve/iterations/0036`
+through `0040` archive directories.
+
+The later video-encoding campaign retained the same source/backend contracts
+and moved direct JPEG packet mux into a capability-gated Rust/FFmpeg batch
+primitive. A current-tip comparison against `main@ca2235e` used five pairs on
+H800-node13 with 16 requested CPUs, 64 GiB, eight data/video workers, `/data`
+input, and `/jfs` output:
+
+| Target | Main median | Current median | Current throughput | Change |
+| --- | ---: | ---: | ---: | ---: |
+| v2.1 | 16.166 s | 12.784 s | 8.448 episodes/s | **+26.45%** |
+| v3.0 | 12.431 s | 12.212 s | 8.844 episodes/s | +1.79%, within noise |
+
+Current CPU seconds were 47.78/48.73 versus main's 74.58/49.71, RSS was lower,
+and peak threads fell from 141 to 21 for both targets. Both output pairs passed
+deep validation and complete comparison for all 108 episodes, 125,412
+trajectory frames, and 324 videos. These shared-filesystem numbers supersede
+the claim that the earlier 11.70/7.15-second table is the final throughput, but
+do not invalidate that historical process-isolation result; cache and resource
+conditions differ.
 
 ## Existing conversion regression
 

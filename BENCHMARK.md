@@ -1,6 +1,6 @@
 # Current benchmark
 
-Updated: 2026-08-29
+Updated: 2026-09-19
 
 Dataset: `dagger`, 3,457 episodes, 2,415,341 frames, 10,371 episode videos,
 approximately 39 GiB in LeRobot v2.1 format.
@@ -26,6 +26,32 @@ The original official LeRobot v2.1-to-v3.0 reference run was 273.06 seconds at
 commit `bf31dd794ffb4f87380aba3912f64421e8352d3c`. It predates the current paired
 series and is retained as historical context, not multiplied into the per-
 iteration speedups above.
+
+## Current-tip regression against main
+
+The current feature tip `aed74b9` was compared directly with `main@ca2235e`
+after adding configurable frame-source encoding and native batched MJPEG mux.
+The complete dagger sources were copied outside timing to allocation-local XFS.
+Slurm job 3555 used H800-node11, 16 CPUs, 64 GiB, 16 data workers, and 16 video
+workers. Five main/current pairs produced these medians:
+
+| Direction | Main | Current | Throughput change | CPU seconds | Peak RSS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| v2.1 to v3.0 | 21.543 s, 160.47 ep/s | 21.398 s, 161.56 ep/s | +0.68%, within noise | 133.37 -> 130.81 | 1134 -> 1137 MiB |
+| v3.0 to v2.1 | 21.776 s, 158.75 ep/s | 21.327 s, 162.10 ep/s | +2.11%, within noise | 111.91 -> 111.96 | 999 -> 1045 MiB |
+
+Both sub-3% differences establish no measurable remux regression, not a new
+speedup. Deep validation and complete comparison passed between current and
+main and between current and each source: 3,457 episodes, 2,415,341 frames,
+and 10,371 encoded video payloads in both directions.
+
+The separate current-versus-main HDF5 run used the 20.7-GiB XVLA source,
+H800-node13, 16 CPUs, 64 GiB, eight data/video workers, and shared JuiceFS
+input/output. Five-pair medians were 16.166 -> 12.784 seconds for v2.1
+(+26.45% throughput) and 12.431 -> 12.212 seconds for v3.0 (+1.79%, within
+noise). Both layouts deep-validated and matched all 108 episodes, 125,412
+frames, and 324 videos. See `docs/VIDEO_ENCODING.md` for raw sample spread and
+the isolated native-primitive result.
 
 ## Correctness checks
 
