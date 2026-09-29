@@ -31,6 +31,8 @@ table-heavy work into coarse native operations that release the GIL.
   semantic metadata, Arrow values, statistics, and packet-payload checks.
 - **Merge at the physical-layout level.** A specialized same-version engine
   streams Parquet rewrites and reuses complete video files without transcoding.
+- **Edit with an optional package.** `letools-editor` relabels tasks, deletes
+  episodes/features, and resizes or re-encodes videos in v2.1/v3.0 datasets.
 - **Plan for the actual machine.** Static planning profiles the dataset, CPU,
   memory, and both source and destination storage before choosing workers and
   v3 shard targets.
@@ -112,7 +114,8 @@ The same four options work with `plan` and `dist plan`. See
 pixel formats, CPU budgets, Python APIs, and the existing-MP4 remux boundary.
 FFmpeg-enabled native wheels batch the default packet-preserving MJPEG path in
 Rust; portable installations fall back to the same PyAV semantics automatically.
-Existing LeRobot MP4 inputs remain remux-only and reject explicit encoding flags.
+Existing LeRobot MP4 inputs in `convert` remain remux-only and reject explicit
+encoding flags. The optional editor handles existing MP4 transcoding.
 
 Merge physical datasets without routing them through the generic source and
 backend path:
@@ -131,8 +134,34 @@ letools visualizer setup
 letools visualizer serve /data/combined-v30 --open
 ```
 
+Install the optional dataset editor from this checkout (a source build requires
+Rust; no FFmpeg development libraries are needed):
+
+```bash
+uv tool install --force --with ./packages/letools-editor --with-executables-from letools-editor .
+letools editor inspect /data/dataset-v30
+letools editor plan /data/dataset-v30 /data/edited-v30 \
+  --delete-episodes 1,5:10 --set-task '3=Fold the cloth'
+letools editor apply /data/dataset-v30 /data/edited-v30 \
+  --delete-episodes 1,5:10 --set-task '3=Fold the cloth' \
+  --remove-feature observation.images.wrist --resize 224x224 \
+  --video-codec libx264 --crf 23 --preset veryfast --workers 4
+```
+
+`letools-editor` exposes the same `inspect`, `plan`, and `apply` commands.
+Edits preserve the input version and publish a separate output; source episode
+IDs are used even when deleting other episodes. Task overrides can also come
+from `--tasks-json`; `--video-key` selects cameras, and MJPEG uses
+`--video-codec mjpeg --quality 2`. CPU threads, pixel format, batch size,
+FFmpeg selection, safe overwrite, Python API, metadata/statistics guarantees,
+and all current limits are covered in the [editor guide](docs/EDITOR.md).
+On the documented 12-episode, three-camera XVLA sample, the default editor
+concurrency resized and re-encoded 12,370 frames in 10.3–10.4 s on 16 allocated
+CPUs; see [the reproducible benchmark](docs/EDITOR_BENCHMARK.md) for cache,
+filesystem, correctness, and measurement boundaries.
+
 The [complete command reference](docs/USAGE.md) documents every conversion,
-merge, planner, distributed, Doctor, Visualizer, and preset option. The
+merge, editor, planner, distributed, Doctor, Visualizer, and preset option. The
 [Python API](docs/USAGE.md#11-python-api) exposes the same typed operations for
 custom pipelines.
 

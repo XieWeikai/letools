@@ -25,6 +25,29 @@ environment. The environment includes PyAV, PyArrow, HDF5 support, NumPy, the
 matching `letools-native` wheel, the pinned Doctor package, and the Visualizer
 annotation dependencies declared by the project.
 
+### Installing the optional editor
+
+The base install does not include `letools-editor`. To install both packages
+from the current checkout and publish both command names:
+
+```bash
+uv tool install --force --with ./packages/letools-editor --with-executables-from letools-editor .
+letools editor --help
+letools-editor --help
+```
+
+This initial source package needs a Rust toolchain (1.88 or newer), but no
+FFmpeg development headers or libclang. It selects a system/user FFmpeg executable
+or uses the executable supplied by its `imageio-ffmpeg` dependency. No editor
+wheel publication is implied. Repeat the same install command when updating an
+editor-enabled tool environment; a plain base-only reinstall omits the addon.
+
+In the locked development environment, run `uv pip install -e
+./packages/letools-editor` after `uv sync`, then `uv run --no-sync letools editor`.
+Use `--no-sync` because the optional addon is intentionally outside the base
+lockfile. See [Editor](EDITOR.md) for operations, Python APIs, and limits, and
+[editor measurements](EDITOR_BENCHMARK.md) for acceptance evidence.
+
 ### Installing an external source provider
 
 User-owned source formats should be installed as separate Python packages:

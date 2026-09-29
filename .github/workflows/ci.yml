@@ -9,6 +9,26 @@ permissions:
   contents: read
 
 jobs:
+  editor:
+    name: Optional editor (Python + Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.6"
+          enable-cache: true
+      - run: uv sync --locked --group test
+      - run: uv pip install -e ./packages/letools-editor
+      - run: PYTHONPATH=tests uv run --no-sync pytest -q packages/letools-editor/tests tests
+      - run: |
+          export PYO3_PYTHON="$PWD/.venv/bin/python"
+          cargo test --locked --manifest-path packages/letools-editor/rust/Cargo.toml
+          cargo fmt --check --manifest-path packages/letools-editor/rust/Cargo.toml
+          cargo clippy --locked --manifest-path packages/letools-editor/rust/Cargo.toml -- -D warnings
+
   user-install:
     name: Locked user install
     runs-on: ubuntu-latest

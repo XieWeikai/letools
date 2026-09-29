@@ -62,6 +62,8 @@ nav:
       - AgileX source: AGILEX.md
   - Dataset Operations:
       - Merge datasets: MERGE.md
+      - Optional dataset editor: EDITOR.md
+      - Editor acceptance and benchmark: EDITOR_BENCHMARK.md
       - Dataset Doctor: DOCTOR.md
       - Dataset Visualizer: VISUALIZER.md
   - Development:

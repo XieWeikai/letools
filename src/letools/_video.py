@@ -42,8 +42,16 @@ def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
     if not inputs:
         raise ValueError("At least one input video is required")
     if _native.video_concat_available():
-        _native.concatenate_videos(inputs, output)
-        return
+        try:
+            _native.concatenate_videos(inputs, output)
+            return
+        except OSError as error:
+            # Minimal published FFmpeg builds may lack h264_mp4toannexb, which
+            # the concat demuxer automatically requests for H.264 MP4. The
+            # portable PyAV runtime has the full bitstream-filter set. Do not
+            # hide unrelated I/O/mux failures behind an expensive retry.
+            if "Bitstream filter not found" not in str(error):
+                raise
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", suffix=".ffconcat", delete=False) as listing:
         listing.write("ffconcat version 1.0\n")
@@ -55,7 +63,12 @@ def concatenate_videos(inputs: Sequence[Path], output: Path) -> None:
         temporary = Path(handle.name)
     try:
         source = av.open(
-            str(listing_path), mode="r", format="concat", options={"safe": "0"}
+            # MP4 -> MP4 remux must retain AVCC packet bytes. The concat
+            # demuxer's automatic Annex-B filter inserts SPS/PPS NAL units and
+            # changes payload hashes even without re-encoding. Input clips in
+            # one camera group already have a compatible codec configuration.
+            str(listing_path), mode="r", format="concat",
+            options={"safe": "0", "auto_convert": "0"},
         )
         destination = av.open(str(temporary), mode="w")
         streams = {}

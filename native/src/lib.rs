@@ -195,6 +195,9 @@ fn concat_videos(inputs: &[PathBuf], output: &PathBuf) -> Result<(), String> {
 
     let mut options = ffmpeg::Dictionary::new();
     options.set("safe", "0");
+    // Preserve MP4 AVCC payloads; automatic Annex-B conversion injects extra
+    // SPS/PPS packets and requires a filter absent from minimal FFmpeg builds.
+    options.set("auto_convert", "0");
     let mut input = ffmpeg::format::input_with_dictionary(listing.path(), options)
         .map_err(|error| format!("open concat input: {error}"))?;
     let parent = output

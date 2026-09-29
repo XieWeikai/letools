@@ -8,6 +8,9 @@ scales conversion from one machine to Slurm or Kubernetes. Python owns the
 public dataset abstractions while coarse Rust primitives accelerate filesystem
 and video operations.
 
+The optional [letools-editor](EDITOR.md) adds task relabeling, episode/feature
+deletion, and video resizing/re-encoding for both LeRobot layouts.
+
 [:material-download: Install LeTools](INSTALLATION.md){ .md-button .md-button--primary }
 [:material-console: Command reference](USAGE.md){ .md-button }
 

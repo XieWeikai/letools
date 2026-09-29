@@ -46,6 +46,8 @@ The system executable is informational and is not required for conversion.
 letools convert SOURCE DESTINATION --to VERSION [options]
 letools plan SOURCE DESTINATION --to VERSION [options]
 letools merge SOURCE... --output DESTINATION [options]
+letools editor inspect SOURCE [--limit N]
+letools editor plan|apply SOURCE DESTINATION [edit options]
 letools validate DATASET [--deep]
 letools compare LEFT RIGHT [--skip-data] [--videos]
 letools doctor [environment|DATASET|check|fix|trim|score|gate|merge-check]
@@ -61,6 +63,15 @@ All result-producing commands print JSON to standard output. `validate` and
 different result. Parsing and execution failures return a nonzero status.
 
 Accepted target spellings are `v2.1`, `2.1`, `v3.0`, and `3.0`.
+
+`editor` is supplied by the optional `letools-editor` package. From this
+checkout install both into a direct-command environment with
+`uv tool install --force --with ./packages/letools-editor .` (Rust is required
+for this initial source build). It supports task overrides, episode deletion,
+feature removal, existing-MP4 re-encoding, and resizing, with a read-only `plan`
+and transactional `apply`. See [the full editor reference](EDITOR.md) for every
+flag, examples, Python APIs, resource policy, and limitations. Base installations
+and the existing `convert` video-remux behavior are unchanged.
 
 `letools doctor` with no arguments is the environment report. Doctor dataset
 commands and the web Visualizer are documented in [DOCTOR.md](DOCTOR.md) and

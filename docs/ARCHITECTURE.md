@@ -19,6 +19,7 @@ The implemented product boundary is intentionally narrow:
 - validate one dataset and compare two datasets semantically;
 - choose a static conversion configuration before execution;
 - merge multiple physical same-version LeRobot datasets through a specialized path;
+- optionally edit physical same-version datasets with the separate `letools-editor` package;
 - diagnose, repair, curate, and gate LeRobot datasets through pinned Doctor;
 - visualize local or Hub datasets through the pinned Hugging Face web application;
 - report environment capabilities and conversion stage timings;
@@ -98,6 +99,16 @@ backend, or a planner consumer.
 The merge engine is also outside this diagram's conversion pipeline.
 Its permanently fixed LeRobot-to-same-LeRobot contract does not benefit from
 source plugins or generic backends and can exploit physical file identity.
+
+The optional editor likewise has a fixed same-version contract. Core CLI imports
+it only for `letools editor`; base installations and existing hot paths do not
+load it. Its Python manifest schedules unchanged file reuse, bounded projected
+Parquet rewrites, and affected-video jobs. Existing core Rust primitives perform
+reflink/copy and MJPEG remux; FFmpeg subprocesses handle frame selection, scale,
+and encoding; a separate dependency-light Rust extension streams exact decoded
+output RGB statistics with the GIL released. Metadata, splits, transaction
+publication, and CLI policy remain in Python. See [Editor](EDITOR.md) for
+module boundaries, data flow, fallback encoding, and acceptance requirements.
 
 Distributed conversion composes the existing conversion and merge pipelines.
 It serializes source construction, presents each episode interval as a complete

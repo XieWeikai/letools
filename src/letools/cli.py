@@ -143,6 +143,7 @@ def build_parser(
 
     parser = argparse.ArgumentParser(prog="letools")
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("editor", help="Edit datasets (optional letools-editor package)")
     conversion = commands.add_parser("convert", help="Convert a local dataset")
     conversion.add_argument("source", type=Path)
     conversion.add_argument("destination", type=Path)
@@ -367,6 +368,21 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch one CLI command and return a process exit status."""
 
     tokens = list(sys.argv[1:] if argv is None else argv)
+    if tokens and tokens[0] == "editor":
+        # The optional extension is imported only on explicit dispatch. Base
+        # conversion/merge/planner installations gain no editor dependencies.
+        try:
+            from letools_editor.cli import main as editor_main
+        except ModuleNotFoundError as error:
+            if error.name != "letools_editor":
+                raise
+            print(
+                "Install the optional editor: uv pip install ./packages/letools-editor\n"
+                "For uv tool installs: uv tool install --with ./packages/letools-editor .",
+                file=sys.stderr,
+            )
+            return 2
+        return editor_main(tokens[1:])
     # Preserve the original no-argument environment report while delegating
     # every dataset operation to the complete pinned Doctor CLI. This early
     # dispatch also preserves upstream parsing, help text, and exit semantics.

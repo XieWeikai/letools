@@ -46,6 +46,14 @@ rejected rather than silently ignored. Python `convert()` retains its existing
 remux behavior when a shared `ConversionConfig` contains encoding settings.
 `merge` continues to preserve encoded payloads and has no encoding options.
 
+For existing MP4 re-encoding, CRF/preset control, or exact resizing, install the
+optional [letools-editor](EDITOR.md) and use `letools editor apply ... --resize
+224x224 --video-codec libx264 --crf 23`. That separate same-version engine
+rebuilds actual output pixel statistics and episode-boundary keyframes.
+H.264 concat disables automatic Annex-B injection to preserve MP4 packet
+payloads; installations with an older minimal native wheel missing the required
+bitstream filter retry through PyAV for that specific capability error.
+
 ## Direct JPEG mux versus re-encoding
 
 With no options, JPEG frames are copied as MJPEG packets into MP4, retaining
