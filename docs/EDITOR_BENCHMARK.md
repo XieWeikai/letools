@@ -101,10 +101,12 @@ new large-scale performance campaign for all those paths.
   converted test videos. Statistics are compared with independently decoded
   PyAV pixels within one RGB quantization step, accounting for FFmpeg-version
   color-conversion differences.
-- Middle-episode deletion from an inter-frame video takes the explicit safe
-  re-encoding path. Removed MJPEG frames are physically absent. Missing/extra
-  decoded frames are rejected. Encoder and publication failures preserve the
-  previous destination, remove staging, and do not alter the source.
+- Middle-episode deletion from an inter-frame video uses packet-preserving
+  remux only after the bounded H.264 safety proof described below; inputs that
+  fail that proof take the explicit CRF-0 re-encoding fallback. Removed MJPEG
+  frames are physically absent. Missing/extra decoded frames are rejected.
+  Encoder and publication failures preserve the previous destination, remove
+  staging, and do not alter the source.
 - Real-data outputs for all three operations in both versions were deeply
   validated. Every retained numeric row, task label, episode/frame index, and
   (for non-transcodes) every retained camera packet digest was checked.
@@ -194,3 +196,24 @@ byte identity of the 14 reused video files, and official v3 metadata and
 dataset loader checks at all 18 retained episode boundaries. The complete
 bidirectional dagger conversion gate is tracked in the local self-improve
 iteration report.
+
+## Safe H.264 packet remux (2026-09-30)
+
+Iteration `0056` added a fail-closed packet audit for partial H.264 deletion.
+On the same 12-episode fixture, the six affected H.264 files were proven
+IDR-aligned and remuxed without decoding; zero files were transcoded. The
+checker compared **26,034 retained packet payloads and 26,034 decoded RGB
+frames** against the immutable source, and LeTools deep validation passed.
+The editor suite passed 22/22 tests, including a non-IDR boundary that is
+required to reject the fast path.
+
+The formal B/C/B/C/B/C run used Slurm job 4569 on `H800-node11` (16 CPUs,
+64 GiB, four workers, local XFS, warm cache). Candidate deletion had a median
+wall time of **0.91 s** (9,536 output frames/s); the accepted 0055 baseline had
+a median of **31.90 s** (273 output frames/s), a **35.0x** wall-throughput
+improvement. A fresh same-allocation official comparison (job 4570) measured
+official deletion at **30.04 s** median (289 frames/s), so the candidate is
+**33.0x faster** on this workload. Candidate peak aggregate RSS was about
+216 MiB; official peak RSS was about 580 MiB. These numbers cover deletion
+without an explicit video transform; requested resize/codec changes still
+take the transcode path.

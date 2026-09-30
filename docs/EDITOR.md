@@ -160,11 +160,14 @@ column. A v3 Parquet shard is read once rather than once per episode.
 
 For v3 partial-video deletion, MJPEG's independent frames permit packet-preserving
 compaction. Existing native split/concat are reused; temporary slices live only
-inside staging. Inter-frame formats (e.g. H.264) cannot safely discard arbitrary
-packets. The editor re-encodes only physical files with removed frames to
-H.264 CRF 0, recomputes their pixel stats, and reports the work in
-`plan.warnings`. Fully retained files in the same camera are reused with their
-original packets and statistics.
+inside staging. H.264 is compacted without decoding when a bounded packet audit
+proves all of the following: one frame per packet, PTS equals DTS, timestamps
+are contiguous, there are no B/P inter-frame dependencies, and every retained
+range starts with an IDR packet. This preserves the encoded packet payloads and
+pixel values. If any proof condition fails, the editor fails closed to H.264
+CRF 0 re-encoding only for the affected physical files, recomputes their pixel
+stats, and reports the fallback in `plan.warnings`. Fully retained files in the
+same camera are reused with their original packets and statistics.
 Explicit transcoding uses the requested quality instead. This fallback can cost
 substantially more than metadata-only editing and may change color conversion.
 Deleted frames are physically absent from the published output, not merely

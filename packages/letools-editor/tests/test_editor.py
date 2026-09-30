@@ -23,6 +23,7 @@ from letools import (
 )
 from letools._stats import aggregate_episode_stats
 from letools._video import packet_digests
+from letools_editor.media import packet_remux_safe
 
 KEY = "observation.images.front"
 
@@ -248,18 +249,31 @@ def test_resize_codec_output_statistics_and_roundtrip(
         assert len(decoded(path)) > 0
 
 
-def test_delete_interframe_video_falls_back_safely(tmp_path):
+def test_delete_idr_aligned_h264_remuxes_safely(tmp_path):
     root = make_dataset(tmp_path / "input", "v3.0", "libx264")
     target = tmp_path / "output"
     config = EditConfig(delete_episodes=frozenset({1}))
     plan = plan_edit(root, target, config)
-    assert plan.videos_transcode == 1
-    assert plan.warnings and "inter-frame" in plan.warnings[0]
+    # The fixture's episode boundaries are IDR-aligned and contain one frame
+    # per packet, so the planner can preserve compressed bytes exactly.
+    assert plan.videos_remux == 1
+    assert plan.videos_transcode == 0
+    assert not plan.warnings
     edit_dataset(root, target, config)
     source = open_dataset(target)
     frames = decoded(source.episodes[0].videos[KEY].path)
     assert len(frames) == 5
     assert frames[:3, :, :, 0].mean() < frames[3:, :, :, 0].mean() - 60
+
+
+def test_h264_proof_fails_closed_for_non_idr_boundary(tmp_path):
+    root = make_dataset(tmp_path / "input", "v3.0", "libx264")
+    source = open_dataset(root)
+    path = source.episodes[0].videos[KEY].path
+    # Frame 1 is deliberately not an IDR boundary in this fixture. A future
+    # encoder/container change must therefore retain the decode-and-encode
+    # fallback instead of silently emitting undecodable inter frames.
+    assert not packet_remux_safe(path, ((1, 3),))
 
 
 @pytest.mark.parametrize("version", ["v2.1", "v3.0"])

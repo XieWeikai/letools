@@ -59,6 +59,82 @@ def probe(path: Path) -> dict[str, Any]:
         }
 
 
+def packet_remux_safe(path: Path, ranges: tuple[tuple[int, int], ...]) -> bool:
+    """Prove that H.264 frame ranges can be compacted without decoding.
+
+    The native splitter preserves packet payloads but cannot repair an
+    inter-frame cut. This bounded demux pass therefore fails closed unless
+    every packet is one frame with PTS == DTS, timestamps are contiguous, and
+    each retained range starts with an IDR NAL unit. Unsupported layouts simply
+    return ``False`` so the caller keeps the CRF-0 fallback.
+    """
+
+    try:
+        with av.open(str(path)) as container:
+            streams = container.streams.video
+            if len(streams) != 1:
+                return False
+            stream = streams[0]
+            if (
+                stream.codec_context.name != "h264"
+                or stream.time_base is None
+                or stream.average_rate is None
+                or stream.frames <= 0
+                or "mp4" not in container.format.name
+            ):
+                return False
+            extra = bytes(stream.codec_context.extradata or b"")
+            if len(extra) < 5 or extra[0] != 1:
+                return False
+            length_size = (extra[4] & 3) + 1
+            if length_size not in {1, 2, 4}:
+                return False
+            starts = {start for start, _ in ranges}
+            packets = 0
+            frame_ticks = 1 / (stream.average_rate * stream.time_base)
+            if frame_ticks.denominator != 1:
+                return False
+            safe_starts: set[int] = set()
+            for packet in container.demux(stream):
+                # PyAV emits one terminal flush packet with no timestamps.
+                # It carries no encoded frame and is not part of the proof.
+                if packet.dts is None and packet.pts is None and packet.size == 0:
+                    continue
+                if packet.dts is None or packet.pts is None:
+                    return False
+                if packet.pts != packet.dts or packet.pts != packets * frame_ticks:
+                    return False
+                payload = bytes(packet)
+                types: list[int] = []
+                position = 0
+                while position + length_size <= len(payload):
+                    length = int.from_bytes(
+                        payload[position : position + length_size], "big"
+                    )
+                    position += length_size
+                    if length <= 0 or position + length > len(payload):
+                        return False
+                    types.append(payload[position] & 0x1F)
+                    position += length
+                if position != len(payload) or not types:
+                    return False
+                if (
+                    packets in starts
+                    and packet.is_keyframe
+                    and 5 in types
+                    and not any(kind in {1, 2, 3, 4} for kind in types)
+                ):
+                    safe_starts.add(packets)
+                packets += 1
+            if packets != stream.frames or any(
+                start < 0 or end > packets or start >= end for start, end in ranges
+            ):
+                return False
+            return safe_starts == starts
+    except (OSError, ValueError, av.error.FFmpegError):
+        return False
+
+
 def _coalesce(ranges: tuple[tuple[int, int], ...]) -> list[tuple[int, int]]:
     result: list[tuple[int, int]] = []
     for start, end in ranges:
@@ -160,7 +236,7 @@ def transcode(job: MediaJob, output: Path, executable: str, config: EditConfig) 
 
 
 def remux(job: MediaJob, output: Path) -> None:
-    """Physically compact independent MJPEG packets without recompression.
+    """Compact MJPEG or proven IDR-aligned H.264 without recompression.
 
     Reuse the existing GIL-free native split and concat primitives. Temporary
     slices are confined to staging and removed immediately after each job. A

@@ -34,7 +34,12 @@ from letools.model import VideoSlice
 from letools.planner.inspect import inspect_resources
 from letools.plugins import DatasetSource, open_dataset
 from letools.validation import validate_dataset
-from letools_editor.media import execute_media, probe, resolve_ffmpeg
+from letools_editor.media import (
+    execute_media,
+    packet_remux_safe,
+    probe,
+    resolve_ffmpeg,
+)
 from letools_editor.model import (
     EditConfig,
     EditPlan,
@@ -281,6 +286,7 @@ def _manifest(
     raw_jobs = []
     key_numbers: dict[str, int] = defaultdict(int)
     fallback_keys = set()
+    packet_remux_paths = set()
     for (key, path), group in media_groups.items():
         _safe_input(path, root)
         header = headers.setdefault(path, probe(path))
@@ -316,7 +322,12 @@ def _manifest(
             else None
         )
         if partial and header["codec"] != "mjpeg" and transform is None:
-            fallback_keys.add(key)
+            if header["codec"] == "h264" and packet_remux_safe(
+                path, tuple(ranges)
+            ):
+                packet_remux_paths.add(path)
+            else:
+                fallback_keys.add(key)
         number = key_numbers[key]
         key_numbers[key] += 1
         if v21:
@@ -339,13 +350,24 @@ def _manifest(
     warnings = []
     for key, path, output, group, ranges, partial, transform, location in raw_jobs:
         header = headers[path]
-        if partial and header["codec"] != "mjpeg" and transform is None:
+        if (
+            partial
+            and header["codec"] != "mjpeg"
+            and path not in packet_remux_paths
+            and transform is None
+        ):
             # Fully retained files keep their original packets and statistics.
             # Only a physical file with removed inter-frame packets needs a
             # decoder and encoder. CRF=0 minimizes additional quantization;
             # the changed file's pixel statistics are recomputed from output.
             transform = VideoEdit(crf=0, pixel_format=header["pixel_format"])
-        mode = "transcode" if transform else "remux" if partial else "reuse"
+        mode = (
+            "transcode"
+            if transform
+            else "remux"
+            if partial
+            else "reuse"
+        )
         feature = source.metadata.features[key]
         depth = any(
             feature.get(namespace, {}).get("video.is_depth_map", False)
