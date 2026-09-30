@@ -157,3 +157,40 @@ official loader jobs: 4378 (v3) and 4385 (v2.1); current-native suite: 4381.
 The final full Python suite passed again in job 4386; MkDocs strict build passed.
 These scratch records are not portable repository assets; the scripts and this
 summary are versioned so the experiment can be recreated elsewhere.
+
+## H.264 deletion optimization (2026-09-30)
+
+The initial implementation transcoded every retained physical file of a camera
+if any file had a partial deletion. The editor now transcodes only the affected
+files; whole retained files preserve their original packets and statistics.
+This was measured with the same 12-episode, three-camera 640x480 fixture after
+H.264 encoding (174 MiB, 23 video files). Episodes 1, 5, and 9 were deleted,
+leaving 9 episodes and 8,678 frames. The editor changed six partial video files
+and reused 14 whole ones, rather than transcoding 12 retained files.
+
+Alternating baseline/candidate runs (B C B C B C) used Slurm job 4555 on
+`H800-node11`, 16 CPUs, 64 GiB, four editor workers, local XFS, and warm,
+uncontrolled OS cache. Median end-to-end CLI wall time was **68.788 s versus
+32.237 s**, or **2.13x throughput** (126.2 versus 269.2 output frames/s).
+Median CPU time fell from 319.6 to 127.9 CPU-seconds; peak aggregate RSS
+was below 390 MiB in all six runs and peak thread count remained 65. This is a
+specific H.264 deletion workload, not a general editor speedup. The earlier
+official-tool comparison used a different output encoding policy: official
+deletion retained source-like settings, while this fallback uses CRF 0 and
+recomputes output pixel statistics. Its previously measured 29.436 s median is
+therefore a reference point, not an identical-workload speed comparison.
+
+In a fresh, same-allocation four-worker comparison (Slurm 4559), official
+LeRobot deletion took 31.033 s median versus LeTools' 32.457 s, and official
+re-encoding took 62.216 s versus LeTools' 65.247 s. At eight workers
+(Slurm 4560), re-encoding took 38.942 s official versus 46.023 s LeTools.
+Thus the improvement over the previous editor is accepted, but the editor
+does **not** yet exceed official throughput on either H.264 operation. Output
+policies differ as described above, so these times are operational rather
+than bit-exact-equivalent comparisons.
+
+The candidate output passed deep dataset validation, row/episode/task checks,
+byte identity of the 14 reused video files, and official v3 metadata and
+dataset loader checks at all 18 retained episode boundaries. The complete
+bidirectional dagger conversion gate is tracked in the local self-improve
+iteration report.

@@ -339,10 +339,11 @@ def _manifest(
     warnings = []
     for key, path, output, group, ranges, partial, transform, location in raw_jobs:
         header = headers[path]
-        if key in fallback_keys and transform is None:
-            # Keep the camera's declared codec homogeneous across physical
-            # files. CRF=0 avoids introducing additional H.264 quantization;
-            # colorspace conversion can still differ, so recompute all stats.
+        if partial and header["codec"] != "mjpeg" and transform is None:
+            # Fully retained files keep their original packets and statistics.
+            # Only a physical file with removed inter-frame packets needs a
+            # decoder and encoder. CRF=0 minimizes additional quantization;
+            # the changed file's pixel statistics are recomputed from output.
             transform = VideoEdit(crf=0, pixel_format=header["pixel_format"])
         mode = "transcode" if transform else "remux" if partial else "reuse"
         feature = source.metadata.features[key]
@@ -395,7 +396,7 @@ def _manifest(
         )
     if fallback_keys:
         warnings.append(
-            "Deleting partial inter-frame video requires decoding: re-encode every retained file of "
+            "Deleting partial inter-frame video requires decoding: re-encode only affected files of "
             + ", ".join(sorted(fallback_keys))
             + " as libx264 CRF 0 (no B-frames); recompute output pixel stats."
         )
