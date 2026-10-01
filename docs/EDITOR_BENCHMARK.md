@@ -217,3 +217,42 @@ official deletion at **30.04 s** median (289 frames/s), so the candidate is
 216 MiB; official peak RSS was about 580 MiB. These numbers cover deletion
 without an explicit video transform; requested resize/codec changes still
 take the transcode path.
+
+## Automatic codec-thread tuning (2026-10-01)
+
+Iteration `0067` tuned only the omitted-concurrency transcode path. The
+accepted baseline used eight media workers with one FFmpeg codec thread. The
+candidate keeps eight workers and selects two codec threads, while explicit
+`workers` and `codec_threads` values remain unchanged. This avoids the rejected
+0066 policy that multiplied the worker count and exceeded the memory budget.
+
+The B/C/B/C/B/C run used Slurm job `4640` on `H800-node11`, one task, 16 CPUs,
+64 GiB, the frozen 12-episode H.264 fixture, and warm uncontrolled cache.
+Median measurements were:
+
+| implementation | workers | codec threads | wall s | episodes/s | frames/s | mean CPU cores | peak RSS MiB | peak threads |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| accepted baseline | 8 | 1 | 42.414 | 0.2829 | 291.6 | 10.31 | 595.6 | 95 |
+| candidate | 8 | 2 | 35.245 | 0.3405 | 351.0 | 14.11 | 630.3 | 114 |
+
+The candidate is **1.203x faster** (+20.3%). RSS is 1.058x and peak threads
+1.20x, both within the protocol allowance derived from the throughput factor;
+CPU occupancy rises from 64% to 88% of the 16-CPU allocation. The candidate's
+median CPU time is 496.2 seconds versus 437.3 seconds because the additional
+parallel work shortens elapsed time; no CPU or memory allocation was exceeded.
+
+The deletion regression check used five alternating baseline/candidate runs in
+Slurm job `4649` with four explicit workers. Medians were 6.123 s versus 6.380
+s (4.2% difference), within the warm-cache/run-to-run noise observed in this
+remux workload; the code path and effective plan are unchanged for deletion. A
+separate three-run comparison in job `4647` measured official deletion at
+36.247 s median versus 4.871 s for the candidate (7.4x wall-throughput
+advantage), with the expected cache variance in the editor lanes.
+
+The candidate output passed the editor's built-in validation and the official
+LeRobot metadata/dataset loader boundary checks in job `4648` for both a
+transcode output (12,370 frames) and a deletion output (8,678 frames). The
+focused candidate suite had 38 passes and eight v3 fixture failures caused by
+the existing PyAV/FFmpeg MJPEG frame-count probe; the accepted baseline showed
+the identical eight failures in job `4646`, so this is not a candidate
+regression. The real H.264 acceptance fixture and loader checks were clean.

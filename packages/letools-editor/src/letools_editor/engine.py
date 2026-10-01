@@ -18,7 +18,7 @@ import time
 import uuid
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -424,10 +424,17 @@ def _manifest(
         )
     resources = inspect_resources()
     transcodes = any(job.mode == "transcode" for job in media)
+    auto_resources = transcodes and config.workers is None
+    effective_codec_threads = 2 if auto_resources else config.codec_threads
     # Encoding has one decoder plus the requested encoder threads. The later
     # statistics phase has one decoder plus one Rust reducer.
-    threads_per_job = max(2, config.codec_threads + 1) if transcodes else 1
-    cpu_cap = max(1, resources.effective_cpus // threads_per_job)
+    if auto_resources:
+        # Keep the worker count fixed while using the spare CPU observed in
+        # the benchmark; explicit values remain governed by the old cap.
+        cpu_cap = max(1, resources.effective_cpus * 3 // 4)
+    else:
+        threads_per_job = max(2, config.codec_threads + 1) if transcodes else 1
+        cpu_cap = max(1, resources.effective_cpus // threads_per_job)
     # Conservative codec working-set allowance plus bounded Parquet batches.
     # Metadata still scales with episode count; this is not an RSS hard limit.
     pixels = max(
@@ -446,13 +453,17 @@ def _manifest(
     memory_per_job = max(128 * 1024**2, pixels * 128)
     memory_budget = max(1, resources.effective_memory_bytes // 2)
     memory_cap = max(1, memory_budget // memory_per_job)
-    workers = min(
-        config.workers or 8, cpu_cap, memory_cap, max(1, len(data), len(media))
-    )
-    if workers < (config.workers or workers):
+    requested_workers = 8 if auto_resources else (config.workers or 8)
+    workers = min(requested_workers, cpu_cap, memory_cap, max(1, len(data), len(media)))
+    if workers < requested_workers:
         warnings.append(
             f"Requested concurrency capped to {workers} by effective CPU/memory/job limits"
         )
+    effective_config = replace(
+        config,
+        workers=int(workers),
+        codec_threads=int(effective_codec_threads),
+    )
     info = copy.deepcopy(source.metadata.info)
     info["features"] = {
         key: value
@@ -472,7 +483,7 @@ def _manifest(
         sum(job.mode == "remux" for job in media),
         sum(job.mode == "transcode" for job in media),
         int(workers),
-        config.codec_threads,
+        effective_codec_threads,
         resources.effective_cpus,
         memory_budget,
         tuple(warnings),
@@ -480,7 +491,7 @@ def _manifest(
     return _Manifest(
         source,
         destination,
-        config,
+        effective_config,
         episodes,
         tasks,
         _remap_splits(source, episodes),
@@ -750,7 +761,9 @@ def edit_dataset(
     manifest = _manifest(source, destination, config)
     stages["plan"] = time.perf_counter() - started
     executable = (
-        resolve_ffmpeg(config.ffmpeg) if manifest.plan.videos_transcode else None
+        resolve_ffmpeg(manifest.config.ffmpeg)
+        if manifest.plan.videos_transcode
+        else None
     )
     destination = manifest.destination
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -788,7 +801,7 @@ def edit_dataset(
         with ThreadPoolExecutor(max_workers=manifest.plan.workers) as pool:
             list(
                 pool.map(
-                    lambda job: _write_data(job, staging, config),
+                    lambda job: _write_data(job, staging, manifest.config),
                     [job for job in manifest.data if job.rewrite],
                 )
             )
@@ -797,7 +810,10 @@ def edit_dataset(
         changed = [job for job in manifest.media if job.mode != "reuse"]
         with ThreadPoolExecutor(max_workers=manifest.plan.workers) as pool:
             results = pool.map(
-                lambda job: execute_media(job, staging, executable, config), changed
+                lambda job: execute_media(
+                    job, staging, executable, manifest.config
+                ),
+                changed,
             )
             for job, (header, stats) in zip(changed, results, strict=True):
                 for episode in job.episodes:

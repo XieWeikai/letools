@@ -100,8 +100,8 @@ removes its files, pointers, metadata, and statistics without decoding it.
 | `--pixel-format` | Default yuv420p for H.264, yuvj420p for MJPEG |
 | `--crf` / `--preset` | H.264 quality 0–51 / speed; defaults 23 / veryfast |
 | `--quality` | MJPEG quantizer 1–31 (lower is better); default 2 |
-| `--workers` | Concurrent physical file jobs; automatically bounded by CPU/memory |
-| `--codec-threads` | Threads per encoder; default 1 |
+| `--workers` | Concurrent physical file jobs; automatically bounded by CPU/memory. When omitted for a transcode, the automatic planner uses eight workers on the supported 16-CPU profile. |
+| `--codec-threads` | Threads per encoder; default 1 for explicit worker settings. When both `--workers` and this option are omitted for a transcode, the automatic planner uses two codec threads per job; explicit values are honored. |
 | `--batch-rows` | Parquet read batch rows; default 65,536 |
 | `--ffmpeg` | Explicit executable, including a user-level FFmpeg installation |
 | `--overwrite` | Replace an existing valid-looking output dataset after success |
@@ -134,6 +134,13 @@ result = edit_dataset("/datasets/input", "/datasets/output", config)
 | `letools_editor.media` | Build safe subprocess argument arrays; execute one physical media job at a time |
 | FFmpeg subprocess | Native decode, frame selection, scale, encode; no frames passed through Python |
 | Editor Rust `_native` | Drain decoded RGB, check exact frame count, compute per-episode channel moments with the GIL released |
+
+For a transcode with omitted concurrency options, the planner's measured default
+is eight media workers and two FFmpeg codec threads per job on the 16-CPU
+allocation used by the acceptance benchmark. This is intentionally limited to
+the automatic path: passing either option keeps the caller's explicit choice
+and the conservative existing caps. Delete/remux operations retain the normal
+eight-worker automatic default because they do not create codec workers.
 
 The editor is a specialized physical-layout engine, not a new `DatasetSource`
 provider or conversion backend. It reuses core readers and validators without

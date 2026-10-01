@@ -68,7 +68,11 @@ def worker(args):
                                    "frames": dataset.meta.total_frames}, "stages": stages}))
         return
     from letools_editor import EditConfig, VideoEdit, edit_dataset
-    config = EditConfig(workers=args.workers, codec_threads=1,
+    # workers=0 is the benchmark spelling for the editor's automatic planner.
+    # Keep the explicit path available so a baseline can reproduce its old
+    # fixed-worker behavior in the same process-tree measurement harness.
+    requested_workers = None if args.workers == 0 else args.workers
+    config = EditConfig(workers=requested_workers, codec_threads=args.codec_threads,
         delete_episodes=frozenset(args.delete) if args.case == "delete" else frozenset(),
         video=VideoEdit(size=(224, 224) if args.case == "resize" else None)
               if args.case in {"reencode", "resize"} else None)
@@ -120,7 +124,9 @@ def main():
     p.add_argument("--implementations", nargs="+", default=["baseline", "candidate"])
     p.add_argument("--cases", nargs="+", default=["delete", "reencode"])
     p.add_argument("--repeats", type=int, default=3)
-    p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--workers", type=int, default=4,
+                   help="Editor workers; 0 delegates to the automatic planner")
+    p.add_argument("--codec-threads", type=int, default=1)
     p.add_argument("--delete", nargs="+", type=int, default=[1, 5, 9])
     p.add_argument("--worker", action="store_true")
     p.add_argument("--implementation")
@@ -135,7 +141,8 @@ def main():
     record = {"slurm_job": os.environ["SLURM_JOB_ID"], "node": os.uname().nodename,
         "cpus": os.environ.get("SLURM_CPUS_PER_TASK"), "memory_mb": os.environ.get("SLURM_MEM_PER_NODE"),
         "affinity": sorted(os.sched_getaffinity(0)), "cache": "warm/uncontrolled OS cache",
-        "source": str(args.source), "workers": args.workers, "rows": []}
+        "source": str(args.source), "workers": args.workers,
+        "codec_threads": args.codec_threads, "rows": []}
     for repeat in range(args.repeats):
         for case in args.cases:
             # Exact B C B C order; official, when requested, follows candidate.
@@ -154,7 +161,8 @@ def main():
                 label = f"{implementation}-{case}-{repeat}"
                 command = [python, __file__, "--worker", "--implementation", implementation,
                            "--case", case, "--source", str(args.source), "--output", str(args.work / label),
-                           "--workers", str(args.workers), "--delete", *map(str, args.delete)]
+                           "--workers", str(args.workers), "--codec-threads",
+                           str(args.codec_threads), "--delete", *map(str, args.delete)]
                 row = measure(command, env, args.work / f"{label}.stdout")
                 row.update(implementation=implementation, case=case, repeat=repeat, output=str(args.work / label))
                 record["rows"].append(row)
