@@ -1,8 +1,51 @@
 # Editor acceptance and benchmark
 
-Measured on 2026-09-29 for the initial `feat/dataset-editor` implementation,
-based on main `44b71c9`. This is an MVP acceptance report, not a claim of optimal
-performance on every codec, filesystem, or dataset.
+Updated through 2026-10-01, accepted editor revision `265273a`. This page
+separates the latest operational comparison from the initial MVP measurements
+and later optimization history. No result promises optimal performance on
+every codec, filesystem, or dataset.
+
+## Latest accepted implementation
+
+All comparisons below use Slurm on H800-node11, 16 logical CPUs/64 GiB,
+warm local XFS storage, and a frozen 12-episode H.264 fixture with 12,370
+dataset frames (37,110 camera images), three 640x480 cameras and 23 files.
+Bound timing jobs used eight physical cores plus their SMT siblings. Physical
+disk bandwidth was not measured; these are end-to-end operation timings.
+
+| Operation / samples | LeTools wall | Official wall | Output frames/s, LeTools / official |
+| --- | ---: | ---: | ---: |
+| Delete episodes 1, 5, 9; five pairs, jobs 4691/4695 | 0.805 s | 29.924 s | 10,786 / 290 |
+| Reencode all cameras; five pairs, jobs 4704/4707 | 34.459 s | 30.984 s | 358.98 / 399.24 |
+| Reencode control; three triples, job 4714, unchanged accepted baseline | 33.654 s | 31.828 s | 367.56 / 388.65 |
+
+Deletion retains 9 episodes/8,678 frames and is fast because this fixture's
+retained H.264 ranges pass the packet-remux proof. It is not evidence for
+arbitrary inter-frame cuts or network-copy performance. The deletion measurement
+predates `265273a`; that commit changes only transcode scheduling, and its
+separate deletion controls are reported below with their noise limitations.
+
+Reencoding remains slower than tuned official LeRobot `fb5cfec7`, with eight
+jobs/two encoder threads in both lanes. In the five-pair comparison, LeTools
+uses 507.08 CPU-seconds, 680.64 MiB peak aggregate RSS and 84 peak threads;
+official uses 301.38 CPU-seconds, 3126.21 MiB and 168 threads. Allocation is not
+measured consumption. Both encode H.264 CRF 23/veryfast, but LeTools forces
+episode IDRs without B-frames and recomputes exact decoded-output statistics;
+official uses GOP 2 and retains the previous statistics. These are operational
+comparisons, not identical output-bitstream or equal-quality measurements.
+
+The final accepted scheduling change improves its own three-pair baseline by
+4.48% (35.436 -> 33.917 s). Do not multiply that ratio by older optimization
+ratios or conflate original-resolution reencoding with 224x224 resizing.
+119 Python tests pass, accepted outputs pass complete semantic/statistics/
+packet comparisons and official loader checks, and the full dagger core gate
+passes both directions and roundtrips. Later core timing noise prevents a
+tight universal no-regression claim. See the detailed sections below.
+
+## Initial MVP measurements (2026-09-29)
+
+The following initial results concern `273d4e6` based on main `44b71c9`.
+Their automatic codec policy predates the tuning and corrections below.
 
 ## Environment and measurement boundary
 
@@ -366,3 +409,20 @@ The second five deletion pairs and the v2.1 control passed deep validation and
 complete baseline/candidate semantic/statistics/packet comparison in `4708`.
 The full dagger bidirectional/roundtrip core gate from `4694`/`4698` applies
 to the identical core/native code; `0071` changes only editor job submission.
+
+## Rejected follow-ups (2026-10-01)
+
+Neither experiment is included in `265273a` or the integrated implementation:
+
+| Candidate | Baseline -> candidate median | Decision |
+| --- | --- | --- |
+| 0072 bounded channel-wise RGB integer reduction | 34.995 -> 32.257 s, five pairs | +8.49% throughput, but baseline CV 12.78%; fails twice-noise gate |
+| 0073 larger Linux decoder pipe | 33.654 -> 33.441 s, three pairs | +0.64%, below 3%; peak RSS +14.55%, above allowance |
+
+Both passed 119 Python tests and their Rust tests before timing. Candidate
+0072 emitted SIMD instructions, but that is not sufficient performance evidence.
+Candidate 0073 reduced voluntary context switches by 32.5%, but total CPU cost
+fell less than 1%. Their source and native binaries were restored to the accepted
+implementation. No full acceptance gate or performance commit followed the
+failed timing gates. Raw samples, drafts and diffs remain in the ignored
+`self-improve/iterations/0072-*` and `0073-*` archives.

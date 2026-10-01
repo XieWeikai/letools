@@ -5,7 +5,7 @@
 <h1 align="center">LeTools: High-Performance Data Operations for LeRobot</h1>
 
 <p align="center">
-  Convert heterogeneous robot data, merge LeRobot datasets, plan machine resources,
+  Convert heterogeneous robot data, merge and edit LeRobot datasets, plan machine resources,
   and scale the same workflow from one process to Slurm or Kubernetes.
 </p>
 
@@ -70,6 +70,7 @@ checkout. Ask naturally, for example:
 ```text
 Convert /data/fold-v21 to v3.0 using the current Slurm allocation, then validate it.
 Merge these three v3.0 datasets into /data/all-v30 and report throughput.
+Delete episodes 1 and 5 from /data/all-v30 into a new dataset, then validate it.
 Open /data/all-v30 in the visualizer and give me the forwarding command.
 ```
 
@@ -134,8 +135,10 @@ letools visualizer setup
 letools visualizer serve /data/combined-v30 --open
 ```
 
+### Edit an existing dataset
+
 Install the optional dataset editor from this checkout (a source build requires
-Rust; no FFmpeg development libraries are needed):
+Rust 1.88 or newer and a platform linker; no FFmpeg development libraries are needed):
 
 ```bash
 uv tool install --force --with ./packages/letools-editor --with-executables-from letools-editor .
@@ -155,10 +158,11 @@ from `--tasks-json`; `--video-key` selects cameras, and MJPEG uses
 `--video-codec mjpeg --quality 2`. CPU threads, pixel format, batch size,
 FFmpeg selection, safe overwrite, Python API, metadata/statistics guarantees,
 and all current limits are covered in the [editor guide](docs/EDITOR.md).
-On the documented 12-episode, three-camera XVLA sample, the default editor
-concurrency resized and re-encoded 12,370 frames in 10.3–10.4 s on 16 allocated
-CPUs; see [the reproducible benchmark](docs/EDITOR_BENCHMARK.md) for cache,
-filesystem, correctness, and measurement boundaries.
+Omit both `--workers` and `--codec-threads` to use bounded automatic editing
+concurrency; the editor does not use conversion's `--auto` or plan cache.
+`plan` is optional and read-only; `apply` always inspects the source again.
+Deletion preserves packets where the codec and episode boundaries permit it;
+other inter-frame cuts require re-encoding. Only MP4 camera features are resized.
 
 The [complete command reference](docs/USAGE.md) documents every conversion,
 merge, editor, planner, distributed, Doctor, Visualizer, and preset option. The
@@ -194,20 +198,37 @@ deep-validated, and semantic comparison matched all episodes, frames, and 900
 encoded video packet payloads. Read the [full methodology, samples, resource
 accounting, and limitations](docs/PERFORMANCE.md).
 
-At the current tip, a separate five-pair full XVLA comparison against
-`main@ca2235e` measured HDF5-to-v2.1 throughput **26.45% higher** and
+At `aed74b9`, a separate five-pair full XVLA comparison against
+`ca2235e` measured HDF5-to-v2.1 throughput **26.45% higher** and
 HDF5-to-v3.0 **1.79% higher** (within noise), while complete LeRobot v2.1/v3.0
 remux remained within 2.11% of main in both directions. Every retained output
 passed deep validation and full encoded-payload comparison. These workloads and
 allocations differ from the official chart; see [video encoding](docs/VIDEO_ENCODING.md)
 and [performance](docs/PERFORMANCE.md) rather than combining their ratios.
 
+The optional editor has a separate benchmark on 12 episodes, 12,370 dataset
+frames and three 640×480 cameras, with 16 allocated logical CPUs, 64 GiB,
+and warm local XFS storage:
+
+| Editor operation | LeTools median | Official median | Scope |
+| --- | ---: | ---: | --- |
+| Delete three episodes | 0.805 s | 29.924 s | Five samples; retained H.264 ranges pass the packet-remux proof |
+| Re-encode all cameras | 34.459 s | 30.984 s | Five samples; both use eight jobs and two encoder threads |
+
+Deletion is about 37× faster on this particular remux-friendly fixture;
+re-encoding **does not beat the tuned official tool**. LeTools recomputes
+statistics from decoded output and forces episode-boundary IDRs without
+B-frames; the official comparison uses GOP 2 and retains existing statistics.
+These are operational comparisons, not identical-bitstream or equal-quality
+benchmarks. Memory, CPU, raw samples, rejected experiments and correctness
+limits are in the [editor benchmark](docs/EDITOR_BENCHMARK.md).
+
 ## Architecture
 
 Python owns user-facing policy: provider-specific CLI options, source plugins,
 the common episode model, planners, and orchestration. Backends own only their
 target layout. Rust/Rayon, FFmpeg, and PyArrow are reusable execution
-primitives below those boundaries. Merge, quality tools, and distributed
+primitives below those boundaries. Merge, the optional editor, quality tools, and distributed
 scheduling remain separate paths so their specialized behavior does not add
 branches to conversion hot loops.
 
@@ -223,6 +244,12 @@ was generated from the checked-in
 The [architecture reference](docs/ARCHITECTURE.md) defines every public module,
 ownership boundary, source-provider contract, backend contract, and native
 interface.
+
+The image covers the conversion/merge/distributed paths. The optional editor
+has a separate physical-file plan: reuse unchanged files, rewrite affected
+Parquet, remux safe video ranges or transcode, recompute changed statistics,
+validate, and publish. Python owns policy and scheduling; FFmpeg and Rust own
+pixel processing. Editing is single-node; `dist` distributes conversion only.
 
 ## Distributed Workflow
 
@@ -268,12 +295,15 @@ The full documentation is published at **[xieweikai.github.io/letools](https://x
 | Source, backend, planner, and native boundaries | [Architecture](docs/ARCHITECTURE.md) |
 | CPU, memory, source/destination I/O planning | [Static planner](docs/PLANNER.md) |
 | Same-version high-speed merge | [Merge engine](docs/MERGE.md) |
+| Optional task, episode, feature and video editing | [Editor](docs/EDITOR.md) |
+| Editor versus official measurements and limits | [Editor benchmark](docs/EDITOR_BENCHMARK.md) |
 | Local, Slurm, and Kubernetes execution | [Distributed conversion](docs/DISTRIBUTED.md) |
 | HDF5 mappings and preset TUI | [HDF5 presets](docs/HDF5_PRESETS.md) |
 | Video codec, pixel format, batches, and threads | [Video encoding](docs/VIDEO_ENCODING.md) |
 | Quality checks and repair | [Dataset Doctor](docs/DOCTOR.md) |
 | Local and Hub visualization | [Dataset Visualizer](docs/VISUALIZER.md) |
 | Reproducible performance evidence | [Performance](docs/PERFORMANCE.md) |
+| Tests, optional native builds, skills and Pages | [Development](docs/DEVELOPMENT.md) |
 
 ## Citation
 
@@ -302,7 +332,12 @@ uv run pytest -q
 cargo clippy --manifest-path native/Cargo.toml --locked -- -D warnings
 ```
 
-Conversion optimization changes should follow the checked-in
+For editor tests, install the optional package into that environment and use
+`--no-sync`; for cluster testing, submit the suite through Slurm. See
+[Development](docs/DEVELOPMENT.md) for exact commands, Rust checks, documentation
+preview, and GitHub Pages deployment.
+
+Performance optimization changes should follow the checked-in
 [self-improvement protocol](self-improve/PROTOCOL.md): preserve semantic
 correctness, publish full resource and profile evidence, and weigh complexity
 against measured throughput. Use [GitHub Issues](https://github.com/XieWeikai/letools/issues)

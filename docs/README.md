@@ -12,6 +12,8 @@ performance evidence:
   validation, HDF5 mappings, custom sources, Slurm operation, and troubleshooting.
 - [Installation](INSTALLATION.md): direct command setup, uv tool internals,
   editable and locked development modes, updates, removal, and Slurm visibility.
+- [Development](DEVELOPMENT.md): base/editor tests, native builds, agent skills,
+  documentation preview, GitHub Pages publication, and release boundaries.
 - [Video encoding](VIDEO_ENCODING.md): CLI codec/pixel options, frame batches,
   encoder threads, planner cache, and portable worker configuration.
 - [Optional editor](EDITOR.md): same-version task/episode/feature editing,
@@ -40,12 +42,13 @@ performance evidence:
   storage, CLI conversion, JSON schema, and supported source representations.
 - [AgileX source acceptance](AGILEX.md): raw directory contract, synchronization,
   instruction semantics, real-data correctness, throughput, and five-iteration audit.
-- [Current benchmark](../BENCHMARK.md): full-dataset conversion, round-trip,
+- [Benchmark history](../BENCHMARK.md): revision-pinned conversion, round-trip,
   comparison throughput, resource use, and correctness results.
 - [Self-improvement protocol](../self-improve/PROTOCOL.md): the required process
   for accepting future performance changes.
 
-Start with the usage guide when operating conversion or merge. Use the Doctor
+Start with the usage guide when operating conversion or merge, or the editor
+guide for same-version edits. Use the Doctor
 and Visualizer guides for inspection and curation. Read the architecture,
 external-source, and planner documents before changing module contracts,
 upstream pins, or performance policy.

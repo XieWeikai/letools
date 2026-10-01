@@ -2,6 +2,9 @@
 
 ## 1. Scope
 
+This module distributes conversion. The optional [editor](EDITOR.md) runs
+single-node same-version edits and is not submitted through `letools dist`.
+
 Distributed conversion runs one immutable LeTools plan through interchangeable
 scheduler adapters. The MVP supports:
 

@@ -36,14 +36,15 @@ letools editor --help
 letools-editor --help
 ```
 
-This initial source package needs a Rust toolchain (1.88 or newer), but no
+This source package needs a Rust toolchain (1.88 or newer) and a platform
+linker (for example, the compiler/linker toolchain on Linux), but no
 FFmpeg development headers or libclang. It selects a system/user FFmpeg executable
 or uses the executable supplied by its `imageio-ffmpeg` dependency. No editor
 wheel publication is implied. Repeat the same install command when updating an
 editor-enabled tool environment; a plain base-only reinstall omits the addon.
 
 In the locked development environment, run `uv pip install -e
-./packages/letools-editor` after `uv sync`, then `uv run --no-sync letools editor`.
+./packages/letools-editor` after `uv sync`, then `uv run --no-sync letools editor --help`.
 Use `--no-sync` because the optional addon is intentionally outside the base
 lockfile. See [Editor](EDITOR.md) for operations, Python APIs, and limits, and
 [editor measurements](EDITOR_BENCHMARK.md) for acceptance evidence.
@@ -53,9 +54,19 @@ lockfile. See [Editor](EDITOR.md) for operations, Python APIs, and limits, and
 User-owned source formats should be installed as separate Python packages:
 
 ```bash
+# In a project-local .venv:
 uv pip install -e /work/my-robot-letools
+.venv/bin/letools providers list
+
+# Or install the provider alongside the user-level tool:
+uv tool install --force --with /work/my-robot-letools .
 letools providers list
 ```
+
+Both must live in the same Python environment. `uv pip install` into a checkout
+does not add a provider to an unrelated `uv tool` environment. Include
+`--with ./packages/letools-editor --with-executables-from letools-editor` in
+the tool command as well when retaining an editor-enabled installation.
 
 The package must advertise the `letools.source_providers` entry-point group in
 its `pyproject.toml`. LeTools discovers those entry points at startup and keeps
@@ -162,8 +173,10 @@ explicitly supplied. Remove only the link owned by the current checkout with:
 
 Because this mode points into the checkout, moving or deleting the repository
 breaks the link; rerun the script from the new location. Tests and developer-only
-commands should still use `uv run pytest`, `uv run maturin`, and similar forms so
-their environment is explicit.
+commands should still use the explicit project environment. When the optional
+editor is installed, prefer `.venv/bin/python` or `uv run --no-sync` to avoid
+removing it during base-only synchronization. Rebuild its Rust extension after
+Rust changes; an editable Python install alone does not refresh compiled code.
 
 ## Updating and uninstalling
 

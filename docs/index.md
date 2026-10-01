@@ -93,6 +93,15 @@ succeeds. Existing output is preserved unless `--overwrite` is explicit.
 
     [:octicons-arrow-right-24: Merge engine](MERGE.md)
 
+-   :material-pencil:{ .lg .middle } **Edit a dataset**
+
+    ---
+
+    Install the optional editor to change tasks, delete episodes or features,
+    and resize or re-encode existing MP4 cameras into a separate dataset.
+
+    [:octicons-arrow-right-24: Editor installation and usage](EDITOR.md)
+
 -   :material-stethoscope:{ .lg .middle } **Inspect and validate**
 
     ---
@@ -123,15 +132,35 @@ layout. The planner selects performance parameters but never changes dataset
 meaning. This separation lets HDF5, AgileX, and future sources reuse both target
 formats while keeping the normal LeRobot conversion path fast.
 
+Merge and the optional editor have specialized physical-file plans outside
+this conversion model. The editor uses Python for policy and bounded scheduling,
+existing Rust primitives for file reuse/remux, and FFmpeg plus a separate Rust
+reducer for encoding and exact output-pixel statistics. Its automatic resource
+heuristic is independent of the conversion planner and its calibration cache.
+
+## Measured performance
+
+The published conversion comparison measured a 4.51× v2.1-to-v3.0 speedup on
+300 episodes; see [Performance](PERFORMANCE.md) for the exact revisions,
+resources and storage conditions. Editor results are a separate workload:
+on a 12-episode H.264 fixture, deletion measured 0.805 s versus 29.924 s
+official, while reencoding measured 34.459 s versus 30.984 s official.
+Reencoding has not surpassed the tuned official tool. Codec/keyframe and
+statistics policies differ; see [Editor benchmarks](EDITOR_BENCHMARK.md).
+
 ## Current boundaries
 
 - Distributed conversion currently requires shared POSIX paths visible under
   the same absolute names on every worker.
 - Cluster-wide I/O calibration and direct final-shard writers remain future
   work; the MVP composes the existing conversion and merge engines.
+- The optional editor preserves the source version, writes a separate output,
+  and runs on one node. It has no distributed edit or in-place mode.
 - Training, robot control, and dataset upload are intentionally outside the
   project.
 
 Continue with the [complete usage guide](USAGE.md), or read the
 [architecture reference](ARCHITECTURE.md) before extending a source, backend,
 planner, or scheduler boundary.
+For tests, optional builds, agent skills and this site's deployment, see
+[Development](DEVELOPMENT.md).

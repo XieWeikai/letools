@@ -10,8 +10,8 @@ Version conversion continues to use `letools convert`.
 The editor is a separate Python/Rust distribution under
 `packages/letools-editor`. The base install does not depend on it.
 
-From a recursive source checkout (Rust 1.88 or newer must be installed to build
-this new extension from source):
+From a recursive source checkout (Rust 1.88 or newer and a platform linker
+must be installed to build the extension from source):
 
 ```bash
 uv sync --locked
@@ -31,7 +31,10 @@ For development, install editable with `uv pip install -e
 ./packages/letools-editor`, and use `uv run --no-sync` so a normal base-only
 `uv sync` does not remove the optional package. The root lockfile intentionally
 remains base-only; the addon has its own build configuration and Cargo lock.
-This initial branch does not claim that editor wheels are already on PyPI.
+The documented installation builds from this checkout; the existing native
+release workflow publishes `letools-native`, not editor wheels. Neither a
+base-only `uv sync` nor `letools doctor` installs or verifies the editor.
+See [Development](DEVELOPMENT.md) for its separate Rust/test commands.
 
 FFmpeg is found from `--ffmpeg`, `LETOOLS_EDITOR_FFMPEG`, `PATH`, then the
 `imageio-ffmpeg` packaged executable. No FFmpeg headers, libclang, shared-library
@@ -49,8 +52,9 @@ letools editor plan /datasets/demo /datasets/edited \
   --delete-episodes 1,4,10:15 --set-task '3=Fold the cloth'
 ```
 
-`plan` is read-only: headers and metadata are read; no dataset is written, no
-calibration is run, and no video is decoded. `apply` builds its own fresh plan;
+`plan` is read-only: headers, metadata and, when needed for H.264 deletion,
+encoded packets are read; no dataset is written, no calibration is run, and
+no video pixels are decoded. `apply` builds its own fresh plan;
 running `plan` first is optional. Indices always refer to the **source**, before
 deletion. A colon range is half-open: `10:15` selects 10 through 14.
 
@@ -94,7 +98,7 @@ removes its files, pointers, metadata, and statistics without decoding it.
 | `--tasks-json FILE` | Bulk overrides; explicit `--set-task` wins for duplicate IDs |
 | `--delete-episodes IDS` | Comma-separated IDs / half-open ranges; at least one episode must remain |
 | `--remove-feature KEY` | Repeatable numeric, image, or camera feature removal |
-| `--video-codec` | `libx264` or `mjpeg`; omitted means no explicit transcode |
+| `--video-codec` | `libx264` or `mjpeg`; no video-transform options means no explicit transcode; resize/CRF/preset/pixel-format options also request encoding, defaulting to libx264 |
 | `--resize WxH` | Exact size, default encoder libx264; aspect ratio can change |
 | `--video-key KEY` | Repeatable selection for explicit transforms; default all cameras |
 | `--pixel-format` | Default yuv420p for H.264, yuvj420p for MJPEG |
@@ -105,6 +109,33 @@ removes its files, pointers, metadata, and statistics without decoding it.
 | `--batch-rows` | Parquet read batch rows; default 65,536 |
 | `--ffmpeg` | Explicit executable, including a user-level FFmpeg installation |
 | `--overwrite` | Replace an existing valid-looking output dataset after success |
+
+`--video-key` alone is an error: pair it with a transform such as `--resize`
+or `--video-codec`. `--crf`/`--preset` are for libx264; `--quality` is for
+MJPEG and requires `--video-codec mjpeg`. An override for an episode that is
+also deleted is rejected. Omitted
+concurrency options mean automatic planning, but there is no editor `--auto`,
+calibration, saved-plan execution or planner cache. `--no-validate` is also
+not supported by the editor. Successful commands return exit code 0; reported
+argument/operation errors return 2.
+
+### Cluster execution
+
+Run `plan` in the same allocation as `apply` so it sees the intended CPU and
+memory limits. On a Slurm cluster, for example:
+
+```bash
+srun --partition=dev --nodes=1 --ntasks=1 --cpus-per-task=16 --mem=64G \
+  letools editor apply /shared/input-v30 /shared/edited-v30 \
+  --resize 224x224 --video-codec libx264
+srun --partition=dev --cpus-per-task=4 --mem=16G \
+  letools validate /shared/edited-v30 --deep
+```
+
+Adapt the partition and paths to the cluster. The plan derives limits from
+affinity/cgroups/Slurm, not the login node's total hardware. Node-local scratch
+inputs and outputs require the job to run on the node that holds them. Editing
+is not available through `letools dist`.
 
 ## Python API
 
@@ -121,6 +152,12 @@ config = EditConfig(
 plan = plan_edit("/datasets/input", "/datasets/output", config)
 result = edit_dataset("/datasets/input", "/datasets/output", config)
 ```
+
+Without `video=VideoEdit(...)`, media is reused or safely compacted unless a
+partial inter-frame deletion requires the documented fallback. A bare
+`VideoEdit()` explicitly requests H.264 reencoding at the original dimensions.
+The Python API raises exceptions on invalid requests or execution failures;
+it returns an `EditResult` only after publication succeeds.
 
 ## Architecture and implementation boundaries
 

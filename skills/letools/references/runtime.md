@@ -17,6 +17,10 @@ letools doctor
 follow `docs/INSTALLATION.md` and use the checkout's `.venv/bin/letools` when the
 global command does not point at the checkout being changed.
 
+Same-version editing additionally needs the optional `letools-editor` package
+in that same environment. See [editing](editor.md) for its source-build and
+direct-command setup; base `letools doctor` does not verify the addon.
+
 Release wheels provide the normal PyAV and native-video arrangement. Do not
 modify system FFmpeg, loader paths, or the user's shell environment merely to
 run ordinary LeTools commands. Use `letools doctor` to identify the selected

@@ -68,9 +68,9 @@ entry-point mechanism or an explicit local configuration file.
    DatasetSource plugins                        output backends
    - LeRobotV21Source                          - LeRobotV21Backend
    - LeRobotV30Source                          - LeRobotV30Backend
-   - HDF5Source                                - LeRobotV21Backend
-   - AgileXSource                              - LeRobotV30Backend
-   - custom Python source                      - LeRobotV30Backend
+   - HDF5Source
+   - AgileXSource
+   - custom Python source
            |                                         |
            +--------------------+--------------------+
                                 |
@@ -90,8 +90,8 @@ model and reusable primitives. The shared model never depends on a physical
 LeRobot version. The planner produces `ConversionConfig`; it does not call
 backend internals or change dataset semantics.
 
-Doctor, Visualizer, and the merge engine are intentionally outside this
-diagram's conversion pipeline. Doctor consumes physical datasets through its
+Doctor, Visualizer, the editor and the merge engine are intentionally outside
+this diagram's conversion pipeline. Doctor consumes physical datasets through its
 own diagnostic model. Visualizer reads physical files through Hub-compatible
 HTTP and its browser-side Parquet/video stack. Neither is a `DatasetSource`, a
 backend, or a planner consumer.
@@ -104,11 +104,20 @@ The optional editor likewise has a fixed same-version contract. Core CLI imports
 it only for `letools editor`; base installations and existing hot paths do not
 load it. Its Python manifest schedules unchanged file reuse, bounded projected
 Parquet rewrites, and affected-video jobs. Existing core Rust primitives perform
-reflink/copy and MJPEG remux; FFmpeg subprocesses handle frame selection, scale,
-and encoding; a separate dependency-light Rust extension streams exact decoded
+reflink/copy and MJPEG or proven IDR-aligned H.264 remux; FFmpeg subprocesses
+handle frame selection, scale and encoding; a separate dependency-light Rust
+extension streams exact decoded
 output RGB statistics with the GIL released. Metadata, splits, transaction
 publication, and CLI policy remain in Python. See [Editor](EDITOR.md) for
 module boundaries, data flow, fallback encoding, and acceptance requirements.
+
+Its resource heuristic is separate from `planner/*`: no storage calibration,
+plan cache, runtime adaptation or `--auto` switch. Larger transcodes are
+submitted first to the bounded file pool; results are applied in manifest
+order. Each transcode finishes encoding before decoded-output statistics are
+recomputed, because lossy output pixels differ from source pixels. The editor's
+Rust crate communicates with the FFmpeg executable over a raw RGB byte stream;
+it does not share PyAV frames or link to the core wheel's FFmpeg runtime.
 
 Distributed conversion composes the existing conversion and merge pipelines.
 It serializes source construction, presents each episode interval as a complete
@@ -211,6 +220,8 @@ because h5py serializes HDF5 C API calls inside one process.
 | `third_party/external/` | Exact upstream commits through Git submodules | LeTools-owned edits |
 | `third_party/patches/` | Reviewable transformations applied to cache copies | Runtime state or generated dependencies |
 | `native/` | Parallel file primitives and optional FFmpeg hot paths | Python model or planner policy |
+| `packages/letools-editor/src/letools_editor/` | Optional CLI/API, physical edit manifest, bounded scheduling, metadata and publication | Source plugins, version conversion, distributed execution or training |
+| `packages/letools-editor/rust/` | GIL-free exact RGB moments over the encoded-output decode stream | Codec selection, planner policy or FFmpeg library ABI |
 
 ### Dataset staging and media publication
 

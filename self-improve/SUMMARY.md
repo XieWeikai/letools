@@ -1,11 +1,11 @@
 # letools self-improvement summary
 
-Status: active
+Status: editor campaign integrated; future optimization requires a new measured iteration.
 
-## Editor campaign (feature branch)
+## Editor campaign
 
-The editor acceptance branch is `feat/dataset-editor`; this campaign has not
-been merged into main. Accepted optimization history includes `17f699e`
+The editor campaign used `feat/dataset-editor` as its acceptance branch before
+integration into main. Accepted optimization history includes `17f699e`
 (limit H264 deletion reencoding to affected files), `0e3a155` (prove IDR-aligned
 packet remux), and `1098f7d` (automatic eight-job/two-codec-thread plan).
 The editor's measurements and contracts are in [the benchmark report](../docs/EDITOR_BENCHMARK.md)
@@ -35,6 +35,16 @@ policies differ and are documented; this is not equal-bitstream performance.
 The core conversion check also had excessive timing noise and does not
 establish a tight no-regression bound. Drafts, complete samples and diagnostic
 spans are archived outside Git.
+
+The accepted scheduling commit is `265273a`. Follow-ups 0072 and 0073 were
+rejected and restored: bounded RGB integer reductions improved the median
+8.49% but failed the twice-noise gate (baseline CV 12.78%); enlarging the decode
+pipe improved only 0.64% and raised peak RSS 14.55%. Both passed their Python/
+Rust tests but failed before a full acceptance gate, and neither produced a
+performance commit. The three-pair 0073 unchanged baseline measured 33.654 s
+versus 31.828 s tuned official, so no reencoding lead is claimed. Raw records
+remain in ignored iteration directories. Future work starts from the integrated
+main tip, with a fresh profile and the next unused iteration number.
 
 ## Prior conversion campaigns
 
@@ -222,7 +232,11 @@ writing about 39 GiB, leaving I/O wait rather than a Python hot loop.
 - Official current LeRobot intentionally rejects direct v2.1 loading; it loaded
   the equivalent v3.0 roundtrip for acceptance.
 
-## Retained outputs
+## Historical output locations
+
+These paths record earlier campaigns, not a promise that generated datasets
+remain available; temporary benchmark storage may have been cleaned. Verify
+existence before reuse and keep original dataset sources immutable.
 
 - Final v3.0: `/jfs/tmp/letools/si-0013-roundtrip-v30`
 - Final v2.1 roundtrip: `/jfs/tmp/letools/si-0013-low-c`

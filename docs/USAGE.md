@@ -17,7 +17,8 @@ publishes the `letools` executable, normally under `~/.local/bin`, so no virtual
 environment activation or `uv run` prefix is needed. If the shell cannot find
 the command, run `uv tool update-shell` once and start a new shell. Normal users
 do not need Rust, a C compiler, FFmpeg headers, `pkg-config`, libclang, or an
-environment script.
+environment script for the base package. The optional editor source build
+additionally needs Rust and a platform linker.
 
 Developers can use `uv tool install --editable .`, or reproduce `uv.lock` and
 link its command with `./scripts/link_letools.sh`. Installation modes, updates,
@@ -66,12 +67,27 @@ Accepted target spellings are `v2.1`, `2.1`, `v3.0`, and `3.0`.
 
 `editor` is supplied by the optional `letools-editor` package. From this
 checkout install both into a direct-command environment with
-`uv tool install --force --with ./packages/letools-editor .` (Rust is required
+`uv tool install --force --with ./packages/letools-editor --with-executables-from letools-editor .` (Rust is required
 for this initial source build). It supports task overrides, episode deletion,
 feature removal, existing-MP4 re-encoding, and resizing, with a read-only `plan`
 and transactional `apply`. See [the full editor reference](EDITOR.md) for every
 flag, examples, Python APIs, resource policy, and limitations. Base installations
 and the existing `convert` video-remux behavior are unchanged.
+
+Use source episode IDs and a separate destination:
+
+```bash
+letools editor inspect /data/demo --limit 10
+letools editor plan /data/demo /data/edited --delete-episodes 1,5:8
+letools editor apply /data/demo /data/edited \
+  --delete-episodes 1,5:8 --set-task '3=Fold the cloth'
+```
+
+Editor planning is an uncached resource heuristic; it has no `--auto` flag.
+Omit concurrency options to enable its automatic policy. `plan` never writes
+a dataset, and `apply` constructs a fresh plan whether or not `plan` ran first.
+The [editor parameter reference](EDITOR.md#cli-recipes) covers video transforms,
+feature removal, overwrite, exit codes and Slurm execution.
 
 `letools doctor` with no arguments is the environment report. Doctor dataset
 commands and the web Visualizer are documented in [DOCTOR.md](DOCTOR.md) and
@@ -997,6 +1013,9 @@ through a local module configuration.
 
 ## 15. Development setup
 
+The [development guide](DEVELOPMENT.md) covers optional editor builds/tests,
+documentation checks, agent skills, and Pages deployment alongside this base setup.
+
 Install test and native development groups:
 
 ```bash
@@ -1055,8 +1074,17 @@ different `PATH` from the login shell.
 
 ### Source and target versions match
 
-Direct same-version rewriting is rejected. Select the other supported version
-or use a dedicated copy/repair workflow.
+`convert` rejects same-version rewriting. Select the other version for format
+conversion, use `merge` for combining datasets, or install the optional
+[editor](EDITOR.md) for task/episode/feature/video changes in the same version.
+
+### Editor is missing after installation or update
+
+The editor must be installed into the environment that owns the selected
+`letools` executable. A base-only sync/reinstall can remove it. Check
+`command -v letools` and follow [the optional install](INSTALLATION.md#installing-the-optional-editor).
+The standalone `letools-editor` name is published by the uv tool command only
+when `--with-executables-from letools-editor` is included.
 
 ### Destination exists
 

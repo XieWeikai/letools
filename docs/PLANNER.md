@@ -2,6 +2,11 @@
 
 ## 1. Purpose and boundary
 
+This guide describes the conversion planner used by `plan` and `convert --auto`.
+The [merge engine](MERGE.md) and [optional editor](EDITOR.md) have their own
+specialized heuristics. The editor has no calibration or plan cache; omitting
+its concurrency options enables automatic resource caps without `--auto`.
+
 The planner selects one fixed performance configuration before conversion. It
 tries to find a high-throughput point that fits the CPU and memory allocation
 visible to the current process and is suitable for the dataset and source/

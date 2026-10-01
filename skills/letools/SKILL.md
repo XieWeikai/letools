@@ -1,13 +1,13 @@
 ---
 name: letools
-description: Operate robot datasets with LeTools. Use when the user asks to inspect, plan, convert, merge, validate, compare, repair, score, or visualize LeRobot data; import HDF5 or AgileX recordings; or run LeTools conversion through Local, Slurm, or Kubernetes execution. Do not use for model training or robot control.
+description: Operate robot datasets with LeTools. Use when the user asks to inspect, plan, convert, merge, edit, validate, compare, repair, score, or visualize LeRobot data; import HDF5 or AgileX recordings; or run LeTools conversion through Local, Slurm, or Kubernetes execution. Do not use for model training or robot control.
 ---
 
 # LeTools Dataset Operations
 
 Turn the user's dataset intent into a complete, verified LeTools operation. Use
 the installed CLI as the execution boundary; do not reimplement its conversion,
-planning, merge, validation, Doctor, or Visualizer logic.
+planning, merge, editor, validation, Doctor, or Visualizer logic.
 
 ## Start with evidence
 
@@ -30,6 +30,8 @@ planning, merge, validation, Doctor, or Visualizer logic.
   [external providers](../letools-add-source/references/external-provider.md)
   and inspect `letools providers list` before selecting its format.
 - For same-version LeRobot merge, read [merge](references/merge.md).
+- For task changes, episode/feature removal, or existing-video resize/reencoding,
+  read [optional editing](references/editor.md).
 - For multi-node conversion or explicit Slurm/Kubernetes execution, read
   [distributed execution](references/distributed.md).
 - For validation, semantic comparison, Doctor, or Visualizer, read

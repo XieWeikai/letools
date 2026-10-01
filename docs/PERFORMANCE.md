@@ -2,7 +2,7 @@
 
 LeTools performance claims use immutable datasets, explicit resource limits,
 external wall-clock and peak-RSS measurement, repeated runs, and semantic
-correctness gates. This page records the current public comparison and links to
+correctness gates. This page records revision-pinned public comparisons and links to
 the longer optimization history.
 
 ## Official LeRobot comparison
@@ -106,17 +106,17 @@ wall-time changes were -9.32% (v2.1) and -1.70% (v3.0), both faster candidates
 with no semantic change.
 The full correctness gate passed for all LeRobot and HDF5 outputs.
 
-### Current video branch versus main
+### Video encoding campaign: aed74b9 versus ca2235e
 
-The current video branch tip `aed74b9` adds explicit frame-source encoding
+The measured video branch revision `aed74b9` adds explicit frame-source encoding
 policy and the accepted native batched MJPEG mux. It was compared directly with
 `main@ca2235e`; successive optimization percentages are not multiplied.
 
 On the complete 20.7-GiB XVLA HDF5 source, Slurm job 3572 used 16 CPUs, 64 GiB,
 eight data/video workers, `/data` input, and `/jfs` output. Five interleaved
-main/current medians were:
+baseline/candidate medians were:
 
-| Target | Main | Current | Throughput change | CPU seconds | Peak RSS |
+| Target | ca2235e | aed74b9 | Throughput change | CPU seconds | Peak RSS |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | HDF5 to v2.1 | 16.166 s | 12.784 s | **+26.45%** | 74.58 -> 47.78 | 1265 -> 1231 MiB |
 | HDF5 to v3.0 | 12.431 s | 12.212 s | +1.79%, within noise | 49.71 -> 48.73 | 1207 -> 1189 MiB |
@@ -129,7 +129,7 @@ measurable threshold.
 The complete dagger remux regression used node-local XFS, 16 CPUs, 64 GiB, and
 16 data/video workers. Five-pair medians were 21.543 -> 21.398 seconds (+0.68%
 throughput) for v2.1 to v3.0 and 21.776 -> 21.327 seconds (+2.11%) for v3.0 to
-v2.1. Both are within noise and establish no regression. Current outputs
+v2.1. Both were within noise in that experiment. Candidate outputs
 matched main and source semantics for all 3,457 episodes, 2,415,341 frames,
 and 10,371 encoded video payloads. See [video encoding](VIDEO_ENCODING.md) for
 raw sample spread, option scope, and the isolated Rust-primitive result.
@@ -149,6 +149,26 @@ Earlier accepted operating points are retained below for historical context:
 See [HDF5 acceptance](HDF5_MVP.md), [merge acceptance](MERGE.md), and
 [planner benchmarks](PLANNER_BENCHMARK.md) for methodology, detailed resource
 curves, and rejected candidates.
+
+## Optional editor
+
+Editing has a separate workload and performance model from conversion. On
+the frozen 12-episode H.264 sample with three 640x480 cameras, 16 logical CPUs,
+64 GiB and warm local XFS, five-pair deletion medians were 0.805 s LeTools /
+29.924 s official. Retained ranges pass the H.264 packet-remux proof; arbitrary
+cuts may need much more expensive reencoding.
+
+Five-pair full-resolution reencoding medians were 34.459 s LeTools / 30.984 s
+official with both configured for eight jobs/two encoder threads. LeTools is
+still slower in this lane. It recomputes decoded-output pixel statistics,
+while official retains existing statistics; keyframe policies also differ.
+These results are not equal-bitstream or equal-quality comparisons.
+
+Accepted scheduling at `265273a` improves its own baseline throughput by 4.48%
+without increasing worker/thread counts. Later RGB-reduction and pipe-buffer
+experiments were rejected under the noise/resource thresholds. See
+[Editor acceptance and benchmark](EDITOR_BENCHMARK.md) for raw medians, CPU,
+RSS, loader/payload evidence and the noisy core-conversion regression limitation.
 
 ## Reproducing claims
 

@@ -1,5 +1,5 @@
 site_name: LeTools
-site_description: High-performance tools for creating, converting, merging, and validating LeRobot datasets
+site_description: High-performance tools for creating, converting, merging, editing, and validating LeRobot datasets
 site_url: https://xieweikai.github.io/letools/
 repo_url: https://github.com/XieWeikai/letools
 repo_name: XieWeikai/letools
@@ -67,6 +67,7 @@ nav:
       - Dataset Doctor: DOCTOR.md
       - Dataset Visualizer: VISUALIZER.md
   - Development:
+      - Development and documentation: DEVELOPMENT.md
       - External submodules: THIRD_PARTY.md
 
 plugins:

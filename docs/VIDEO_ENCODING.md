@@ -50,6 +50,23 @@ For existing MP4 re-encoding, CRF/preset control, or exact resizing, install the
 optional [letools-editor](EDITOR.md) and use `letools editor apply ... --resize
 224x224 --video-codec libx264 --crf 23`. That separate same-version engine
 rebuilds actual output pixel statistics and episode-boundary keyframes.
+
+The editor's executable-based encoding has a separate option vocabulary:
+
+| Frame-source conversion | Existing-MP4 editor | Meaning |
+| --- | --- | --- |
+| `--video-codec` | `--video-codec` | PyAV encoder availability vs editor's libx264/MJPEG executable support |
+| `--video-pixel-format` | `--pixel-format` | Requested encoded pixel format |
+| `--video-codec-threads` | `--codec-threads` | Encoder threads per job |
+| `--video-workers` | `--workers` | Concurrent media jobs vs editor physical file jobs |
+| `--auto` | Omit both concurrency options | Calibrated conversion planner vs bounded editor heuristic |
+| Not exposed | `--resize`, `--crf`, `--preset`, `--quality` | Existing-video dimensions and codec-specific quality |
+
+`--preset` is an HDF5 mapping name in conversion and an x264 speed preset in
+the editor. Editor FFmpeg is selected by `--ffmpeg`, `LETOOLS_EDITOR_FFMPEG`,
+`PATH`, then the packaged executable. Its availability is independent of
+PyAV's encoders; no shared FFmpeg ABI is required. See [Editor](EDITOR.md).
+
 H.264 concat disables automatic Annex-B injection to preserve MP4 packet
 payloads; installations with an older minimal native wheel missing the required
 bitstream filter retry through PyAV for that specific capability error.

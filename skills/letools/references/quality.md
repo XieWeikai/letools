@@ -11,6 +11,11 @@ Use `letools compare EXPECTED ACTUAL` for semantic equivalence and include
 from packet-payload preservation in the report; they answer different
 questions.
 
+For intentional editor changes, compare retained rows and expected metadata
+updates rather than requiring the full source and output to be equal. Reused
+or remuxed media can preserve packets; lossy reencoding cannot. The editor
+recomputes statistics from decoded output. See [editing](editor.md).
+
 ## LeRobot Doctor
 
 Top-level `letools doctor` diagnoses the LeTools runtime. The `doctor` command
