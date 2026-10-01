@@ -19,13 +19,22 @@ tables now expose text labels through the official loader's pandas index.
 119 tests pass, full dagger directions/roundtrips pass deep and packet checks,
 and regenerated full v3 outputs pass official metadata/dataset loaders.
 
-The latest 16-CPU/64-GiB operational comparison measured reencoding at
-35.167 s LeTools / 35.202 s official (effectively tied), and five-sample
-deletion at 0.805 s / 29.924 s on the frozen 12-episode fixture. GOP and output
-statistics policies differ and are documented; this is not equal-bitstream
-performance. The core conversion check had excessive timing noise and does
-not establish a tight no-regression bound. 0071 next examines scheduling tail
-latency; its draft and diagnostic spans are archived outside Git.
+Iteration 0071 accepts larger-transcode-first submission, with results still
+applied in manifest order. Its three-pair reencode median improves from
+35.436 to 33.917 s (+4.48% throughput), with slightly lower RSS and unchanged
+84 peak threads under 16 CPUs/64 GiB. Independent output comparisons, official
+loaders, 119 tests and a four-CPU v2.1 control pass. Deletion controls fluctuate
+in the unchanged Parquet stage; their media work remains about 0.02 s, so a
+tight end-to-end deletion regression bound is not established.
+
+A fresh five-pair comparison against **tuned** official reencoding (eight jobs,
+two encoder threads) measures 34.459 s LeTools / 30.984 s official. Reencoding
+has not beaten this official lane. The earlier five-sample deletion comparison
+was 0.805 s / 29.924 s on the frozen 12-episode fixture. GOP and output-statistics
+policies differ and are documented; this is not equal-bitstream performance.
+The core conversion check also had excessive timing noise and does not
+establish a tight no-regression bound. Drafts, complete samples and diagnostic
+spans are archived outside Git.
 
 ## Prior conversion campaigns
 

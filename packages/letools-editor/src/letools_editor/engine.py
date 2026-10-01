@@ -813,13 +813,29 @@ def edit_dataset(
         phase = time.perf_counter()
         changed = [job for job in manifest.media if job.mode != "reuse"]
         with ThreadPoolExecutor(max_workers=manifest.plan.workers) as pool:
-            results = pool.map(
-                lambda job: execute_media(
-                    job, staging, executable, manifest.config
-                ),
+            # Submit larger transcodes first to avoid late large shards
+            # keeping only one or two workers busy. Frame pixels estimate
+            # decode/encode/reduction work without reading media again.
+            # Stable ties keep remux-only execution in its original order.
+            scheduled = sorted(
                 changed,
+                key=lambda job: (
+                    job.width * job.height
+                    * sum(episode.original.length for episode in job.episodes)
+                    if job.mode == "transcode" else 0
+                ),
+                reverse=True,
             )
-            for job, (header, stats) in zip(changed, results, strict=True):
+            pending = {
+                job.relative_output: pool.submit(
+                    execute_media, job, staging, executable, manifest.config
+                )
+                for job in scheduled
+            }
+            # Apply results in manifest order: scheduling must not change
+            # episode order or which file supplies the final camera header.
+            for job in changed:
+                header, stats = pending.pop(job.relative_output).result()
                 for episode in job.episodes:
                     if episode.index in stats:
                         episode.stats[job.key] = stats[episode.index]

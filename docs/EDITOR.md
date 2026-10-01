@@ -165,6 +165,15 @@ It is a conservative first version, not the conversion planner's calibrated
 near-optimality guarantee. Memory is bounded per Parquet batch and RGB frame;
 the full episode manifest remains in memory.
 
+Within the video pool, larger transcode jobs are submitted first. Retained
+frame count times source pixel count estimates work using the existing
+manifest, without another media read. This reduces the tail where only one
+large shard remains busy. Remux-only jobs retain their relative order, and
+results are applied in manifest order so scheduling does not change episode
+ordering, filenames, or which shard supplies the final camera header. The
+small scheduling policy stays in Python; FFmpeg and Rust retain the pixel and
+packet work.
+
 ### Avoiding unnecessary work
 
 Task-only edits rewrite affected data shards and metadata; all videos are

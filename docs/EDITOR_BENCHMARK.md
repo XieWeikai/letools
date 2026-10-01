@@ -316,3 +316,53 @@ bound: forward medians were 2.863/4.067 s and reverse 15.693/13.400 s. Baseline
 forward samples alone ranged from 1.257 to 25.733 s. This metadata correction
 is retained for correctness; these noisy measurements are not presented as a
 conversion performance improvement or a guarantee of unchanged throughput.
+
+## Longest-job scheduling (2026-10-01)
+
+Iteration `0071` keeps the same eight-job/two-codec-thread plan but submits
+larger transcodes first. A separate per-file profile showed only six jobs
+active after 27.5 seconds and three after 31.3 seconds in the original order.
+Encode spans summed to 174.90 seconds and exact-output statistics spans to
+73.53 seconds; these are overlapping wall spans, not CPU times. Submission
+order changes while result application remains in the original manifest order.
+
+Three alternating pairs against accepted `1252bb4` ran in job `4703` with
+16 CPUs/64 GiB on H800-node11, the same warm scratch H.264 fixture and isolated
+thread-pool settings as above. Every lane wrote a fresh output.
+
+| Reencode lane | Median wall s | Frames/s | CPU s | Peak RSS MiB | Peak threads |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Accepted baseline | 35.436 | 349.08 | 497.81 | 615.95 | 84 |
+| Larger jobs first | 33.917 | 364.71 | 501.52 | 613.16 | 84 |
+
+Throughput improved 4.48%, while measured mean CPU occupancy increased from
+14.05 to 14.79 cores without increasing the worker count. Wall-time ranges
+were 1.04% and 0.35% of the respective medians. This clears the 3%/twice-noise
+threshold and the memory/thread gates. Deep validation and complete
+baseline/candidate numeric, statistics, and 36 episode/video packet comparisons
+passed for all three outputs; the official loaders read all 24 episode
+boundaries. The 119-test suite also passed.
+
+An additional official comparison uses eight official workers and **two**
+encoder threads, rather than the earlier one-thread reference. Five pairs in
+jobs `4704`/`4707` measured 34.459 seconds LeTools versus 30.984 seconds
+official (358.98 versus 399.24 frames/s). Thus this scheduling improvement
+does **not** establish a reencoding lead over tuned official LeRobot. The
+differing GOP and output-statistics contracts described above still apply.
+Median CPU seconds were 507.08/301.38, peak RSS 680.64/3126.21 MiB, and peak
+threads 84/168. The sample count was extended because the LeTools lane's
+initial spread exceeded 5%; no samples were discarded.
+
+The four-CPU/16-GiB v2.1 control measured 142.022 versus 139.641 seconds in one
+pair, with 416.80 versus 425.18 MiB peak RSS and 32 threads in both lanes.
+This is a low-resource smoke check, not a statistically established speedup.
+Deletion controls have substantial variability in the unchanged Parquet stage:
+the first five-pair medians were 1.157/2.519 seconds, and an additional five
+pairs measured 1.005/1.107 seconds, with individual runs reaching 6.48/6.08
+seconds. Their media stages remain about 0.02 seconds. This does not establish
+a precise deletion no-regression bound; it also does not isolate a regression
+caused by scheduling. All samples, including slow ones, remain in the archive.
+The second five deletion pairs and the v2.1 control passed deep validation and
+complete baseline/candidate semantic/statistics/packet comparison in `4708`.
+The full dagger bidirectional/roundtrip core gate from `4694`/`4698` applies
+to the identical core/native code; `0071` changes only editor job submission.
