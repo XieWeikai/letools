@@ -100,7 +100,7 @@ removes its files, pointers, metadata, and statistics without decoding it.
 | `--pixel-format` | Default yuv420p for H.264, yuvj420p for MJPEG |
 | `--crf` / `--preset` | H.264 quality 0–51 / speed; defaults 23 / veryfast |
 | `--quality` | MJPEG quantizer 1–31 (lower is better); default 2 |
-| `--workers` | Concurrent physical file jobs; automatically bounded by CPU/memory. When omitted for a transcode, the automatic planner uses eight workers on the supported 16-CPU profile. |
+| `--workers` | Concurrent physical file jobs; bounded by CPU/memory/job count. When both concurrency options are omitted for a transcode, the automatic planner uses up to eight workers on the measured 16-CPU profile. |
 | `--codec-threads` | Threads per encoder; default 1 for explicit worker settings. When both `--workers` and this option are omitted for a transcode, the automatic planner uses two codec threads per job; explicit values are honored. |
 | `--batch-rows` | Parquet read batch rows; default 65,536 |
 | `--ffmpeg` | Explicit executable, including a user-level FFmpeg installation |
@@ -142,6 +142,14 @@ the automatic path: passing either option keeps the caller's explicit choice
 and the conservative existing caps. Delete/remux operations retain the normal
 eight-worker automatic default because they do not create codec workers.
 
+The Python API uses `None` for omitted `workers` and `codec_threads`, and the
+plan always reports the effective integer values. For example,
+`EditConfig(video=VideoEdit(), codec_threads=1)` keeps one encoder thread even
+when `workers` is omitted. `EditConfig(video=VideoEdit(), workers=4)` uses four
+workers (subject to resource/job limits) and one encoder thread. Passing
+neither concurrency option enables automatic tuning. The effective settings
+are passed unchanged from the plan to media execution.
+
 The editor is a specialized physical-layout engine, not a new `DatasetSource`
 provider or conversion backend. It reuses core readers and validators without
 changing their contracts. It is single-node and does not introduce new
@@ -168,9 +176,11 @@ column. A v3 Parquet shard is read once rather than once per episode.
 For v3 partial-video deletion, MJPEG's independent frames permit packet-preserving
 compaction. Existing native split/concat are reused; temporary slices live only
 inside staging. H.264 is compacted without decoding when a bounded packet audit
-proves all of the following: one frame per packet, PTS equals DTS, timestamps
-are contiguous, there are no B/P inter-frame dependencies, and every retained
-range starts with an IDR packet. This preserves the encoded packet payloads and
+proves all of the following: one frame per packet, PTS equals DTS (no frame
+reordering), timestamps are contiguous, and every retained range starts with
+a keyframe containing IDR slices and no non-IDR slices. Predictive frames
+inside each retained range may refer to its earlier retained frames. This
+preserves the encoded packet payloads and
 pixel values. If any proof condition fails, the editor fails closed to H.264
 CRF 0 re-encoding only for the affected physical files, recomputes their pixel
 stats, and reports the fallback in `plan.warnings`. Fully retained files in the

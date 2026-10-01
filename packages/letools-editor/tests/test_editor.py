@@ -276,6 +276,41 @@ def test_h264_proof_fails_closed_for_non_idr_boundary(tmp_path):
     assert not packet_remux_safe(path, ((1, 3),))
 
 
+@pytest.mark.parametrize(
+    "workers, codec_threads, expected_threads",
+    [(None, None, 2), (None, 1, 1), (None, 4, 4), (4, None, 1), (4, 3, 3)],
+)
+def test_concurrency_options_resolve_once(
+    tmp_path, monkeypatch, workers, codec_threads, expected_threads
+):
+    """Omitted knobs permit tuning; each explicit knob survives to execution."""
+    from types import SimpleNamespace
+    from letools_editor import engine
+
+    monkeypatch.setattr(engine, "inspect_resources", lambda: SimpleNamespace(
+        effective_cpus=16, effective_memory_bytes=64 * 1024**3
+    ))
+    root = make_dataset(tmp_path / "source", "v2.1")
+    config = EditConfig(
+        workers=workers, codec_threads=codec_threads, video=VideoEdit()
+    )
+    manifest = engine._manifest(root, tmp_path / "output", config)
+    assert manifest.plan.codec_threads == expected_threads
+    assert manifest.config.codec_threads == expected_threads
+    assert manifest.config.workers == manifest.plan.workers
+    if workers is None:
+        assert not manifest.plan.warnings
+
+
+def test_cli_distinguishes_omitted_and_explicit_codec_threads():
+    from letools_editor.cli import build_parser
+
+    parser = build_parser()
+    command = ["plan", "source", "destination", "--video-codec", "libx264"]
+    assert parser.parse_args(command).codec_threads is None
+    assert parser.parse_args([*command, "--codec-threads", "1"]).codec_threads == 1
+
+
 @pytest.mark.parametrize("version", ["v2.1", "v3.0"])
 def test_drop_camera_without_decoding(tmp_path, version, monkeypatch):
     root = make_dataset(tmp_path / "input", version)

@@ -18,7 +18,9 @@ composition are rejected before destination creation.
 
 Input order determines output episode order. Task strings are deduplicated in
 first-appearance order. Local task indices from each source are mapped into that
-global table.
+global table. In v3 output, task text is stored as a physical Parquet column
+and declared as the named pandas row index. This lets both Arrow readers and
+the official LeRobot loader resolve frame task IDs to the same text.
 
 ## CLI
 

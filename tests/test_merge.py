@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import h5py
+import pyarrow.parquet as pq
 import pytest
 
 from letools import (
@@ -55,6 +56,10 @@ def test_merge_remaps_tasks_and_preserves_video_bytes(tmp_path: Path, version: s
     inputs = (open_dataset(first), open_dataset(second))
     output = open_dataset(destination)
     assert output.metadata.tasks == {0: "fold cloth", 1: "place cloth"}
+    if version == "v3.0":
+        # LeRobot's dataset reader obtains the label from the row's index.
+        tasks = pq.read_table(destination / "meta/tasks.parquet").to_pandas()
+        assert tasks.index.tolist() == ["fold cloth", "place cloth"]
     assert [episode.tasks for episode in output.episodes] == [
         episode.tasks for source in inputs for episode in source.episodes
     ]

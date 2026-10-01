@@ -129,6 +129,10 @@ type, splits, frame and episode totals, the task table, and the original
 `info.json` object. `video_keys` is derived from features whose dtype is
 `video`.
 
+For v3 output, `meta/tasks.parquet` retains task text as a physical column and
+as its named pandas index. Conversion, merge, and editor writers follow this
+contract because the official dataset loader looks up task labels by row name.
+
 ### `Episode`
 
 Describes one logical episode without requiring one physical file per episode:

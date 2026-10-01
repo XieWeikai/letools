@@ -105,6 +105,14 @@ class LeRobotV30Backend(DatasetBackend):
             task_rows,
             schema=pa.schema([("task_index", pa.int64()), ("task", pa.string())]),
         )
+        # Official loaders select the pandas row *index* as the task label.
+        # Preserve a physical task column for Arrow readers while declaring
+        # it as the named pandas index; a RangeIndex would yield integer tasks.
+        task_table = pa.Table.from_pandas(
+            task_table.to_pandas().set_index("task"),
+            schema=task_table.schema,
+            preserve_index=True,
+        )
         task_path = destination / "meta/tasks.parquet"
         task_path.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(task_table, task_path)

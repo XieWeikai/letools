@@ -126,6 +126,9 @@ def test_v21_v30_roundtrip(tmp_path: Path) -> None:
     } <= forward.stages.keys()
     assert forward.stages["data_execute"].tasks > 0
     assert validate_dataset(v30, deep=True).valid
+    tasks = pq.read_table(v30 / "meta/tasks.parquet")
+    assert tasks["task"].to_pylist() == ["test task"]
+    assert tasks.to_pandas().iloc[0].name == "test task"
     v30_info = json.loads((v30 / "meta/info.json").read_text())
     assert v30_info["features"]["observation.state"]["shape"] == [2]
     assert v30_info["features"]["action"]["shape"] == [2]

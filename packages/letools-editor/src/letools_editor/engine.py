@@ -424,8 +424,10 @@ def _manifest(
         )
     resources = inspect_resources()
     transcodes = any(job.mode == "transcode" for job in media)
-    auto_resources = transcodes and config.workers is None
-    effective_codec_threads = 2 if auto_resources else config.codec_threads
+    auto_resources = (
+        transcodes and config.workers is None and config.codec_threads is None
+    )
+    effective_codec_threads = 2 if auto_resources else (config.codec_threads or 1)
     # Encoding has one decoder plus the requested encoder threads. The later
     # statistics phase has one decoder plus one Rust reducer.
     if auto_resources:
@@ -433,7 +435,7 @@ def _manifest(
         # the benchmark; explicit values remain governed by the old cap.
         cpu_cap = max(1, resources.effective_cpus * 3 // 4)
     else:
-        threads_per_job = max(2, config.codec_threads + 1) if transcodes else 1
+        threads_per_job = max(2, effective_codec_threads + 1) if transcodes else 1
         cpu_cap = max(1, resources.effective_cpus // threads_per_job)
     # Conservative codec working-set allowance plus bounded Parquet batches.
     # Metadata still scales with episode count; this is not an RSS hard limit.
@@ -455,7 +457,9 @@ def _manifest(
     memory_cap = max(1, memory_budget // memory_per_job)
     requested_workers = 8 if auto_resources else (config.workers or 8)
     workers = min(requested_workers, cpu_cap, memory_cap, max(1, len(data), len(media)))
-    if workers < requested_workers:
+    # An automatic plan with fewer jobs is normal, not a user limit being
+    # ignored. Preserve cap warnings for explicitly requested concurrency.
+    if config.workers is not None and workers < config.workers:
         warnings.append(
             f"Requested concurrency capped to {workers} by effective CPU/memory/job limits"
         )

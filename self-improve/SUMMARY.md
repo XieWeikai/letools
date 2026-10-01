@@ -2,6 +2,33 @@
 
 Status: active
 
+## Editor campaign (feature branch)
+
+The editor acceptance branch is `feat/dataset-editor`; this campaign has not
+been merged into main. Accepted optimization history includes `17f699e`
+(limit H264 deletion reencoding to affected files), `0e3a155` (prove IDR-aligned
+packet remux), and `1098f7d` (automatic eight-job/two-codec-thread plan).
+The editor's measurements and contracts are in [the benchmark report](../docs/EDITOR_BENCHMARK.md)
+and [editor guide](../docs/EDITOR.md).
+
+Iterations 0068 and 0069 were rejected; Rust packet auditing was slower and a
+combined probe did not establish an end-to-end gain. Iteration 0070 is a
+correctness correction, not an additional performance optimization: explicit
+codec-thread choices survive auto planning, and conversion/merge v3 task
+tables now expose text labels through the official loader's pandas index.
+119 tests pass, full dagger directions/roundtrips pass deep and packet checks,
+and regenerated full v3 outputs pass official metadata/dataset loaders.
+
+The latest 16-CPU/64-GiB operational comparison measured reencoding at
+35.167 s LeTools / 35.202 s official (effectively tied), and five-sample
+deletion at 0.805 s / 29.924 s on the frozen 12-episode fixture. GOP and output
+statistics policies differ and are documented; this is not equal-bitstream
+performance. The core conversion check had excessive timing noise and does
+not establish a tight no-regression bound. 0071 next examines scheduling tail
+latency; its draft and diagnostic spans are archived outside Git.
+
+## Prior conversion campaigns
+
 Twenty accepted optimizations are present on the current acceptance history,
 including the six accepted HDF5-source optimizations. All conversions and full
 comparisons ran as single-node Slurm jobs within the protocol resource ceiling.
@@ -195,7 +222,8 @@ writing about 39 GiB, leaving I/O wait rather than a Python hot loop.
 - Rust-split validated v2.1: `/jfs/tmp/letools/si-0019-c1`
 - Rust-split v3.0 roundtrip: `/jfs/tmp/letools/si-0019-roundtrip-v30`
 
-The governing process is [PROTOCOL.md](PROTOCOL.md). Future optimization cycles
-should continue numbering from iteration 0049 and use the current accepted
-`main` tip as their baseline. Drafts, profiles, diffs, and reports remain under
-the ignored `self-improve/` workspace.
+The governing process is [PROTOCOL.md](PROTOCOL.md). Future cycles use the next
+unused number after the largest archived iteration and the current tip of the
+named acceptance branch (`main` unless a feature campaign explicitly names
+another branch). Drafts, profiles, diffs, and reports remain under the ignored
+`self-improve/` workspace.

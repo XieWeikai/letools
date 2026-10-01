@@ -125,7 +125,8 @@ def build_parser() -> argparse.ArgumentParser:
             help="Concurrent file jobs; default bounded auto (up to 8)",
         )
         command.add_argument(
-            "--codec-threads", type=int, default=1, help="Encoder threads per video job"
+            "--codec-threads", type=int,
+            help="Encoder threads per video job; auto with omitted workers, otherwise 1",
         )
         command.add_argument(
             "--batch-rows",

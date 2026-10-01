@@ -63,7 +63,9 @@ class EditConfig:
     remove_features: frozenset[str] = frozenset()
     video: VideoEdit | None = None
     workers: int | None = None
-    codec_threads: int = 1
+    # None means omitted: the planner may tune only when both concurrency
+    # fields are absent. An explicit 1 must remain distinguishable from None.
+    codec_threads: int | None = None
     batch_rows: int = 65536
     ffmpeg: str | None = None
     overwrite: bool = False
@@ -85,7 +87,7 @@ class EditConfig:
             raise ValueError("Task descriptions must be nonempty strings")
         if (
             (self.workers is not None and self.workers <= 0)
-            or self.codec_threads <= 0
+            or (self.codec_threads is not None and self.codec_threads <= 0)
             or self.batch_rows <= 0
         ):
             raise ValueError(

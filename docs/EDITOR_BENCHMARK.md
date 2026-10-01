@@ -222,9 +222,11 @@ take the transcode path.
 
 Iteration `0067` tuned only the omitted-concurrency transcode path. The
 accepted baseline used eight media workers with one FFmpeg codec thread. The
-candidate keeps eight workers and selects two codec threads, while explicit
-`workers` and `codec_threads` values remain unchanged. This avoids the rejected
-0066 policy that multiplied the worker count and exceeded the memory budget.
+candidate keeps eight workers and selects two codec threads. A later audit
+found that an explicit `codec_threads` value was also overridden if `workers`
+was omitted; the contract correction is documented below. The worker count
+avoids the rejected 0066 policy whose measured RSS increase exceeded the
+protocol's proportional-resource allowance.
 
 The B/C/B/C/B/C run used Slurm job `4640` on `H800-node11`, one task, 16 CPUs,
 64 GiB, the frozen 12-episode H.264 fixture, and warm uncontrolled cache.
@@ -237,9 +239,11 @@ Median measurements were:
 
 The candidate is **1.203x faster** (+20.3%). RSS is 1.058x and peak threads
 1.20x, both within the protocol allowance derived from the throughput factor;
-CPU occupancy rises from 64% to 88% of the 16-CPU allocation. The candidate's
-median CPU time is 496.2 seconds versus 437.3 seconds because the additional
-parallel work shortens elapsed time; no CPU or memory allocation was exceeded.
+CPU occupancy rises from 64% to 88% of the 16-CPU allocation. Median CPU time
+is 496.2 seconds versus 437.3 seconds: this is an elapsed-time improvement with
+increased CPU cost, not improved CPU efficiency. These measurements alone do
+not isolate the cause of the additional work; no CPU or memory allocation was
+exceeded.
 
 The deletion regression check used five alternating baseline/candidate runs in
 Slurm job `4649` with four explicit workers. Medians were 6.123 s versus 6.380
@@ -256,3 +260,59 @@ focused candidate suite had 38 passes and eight v3 fixture failures caused by
 the existing PyAV/FFmpeg MJPEG frame-count probe; the accepted baseline showed
 the identical eight failures in job `4646`, so this is not a candidate
 regression. The real H.264 acceptance fixture and loader checks were clean.
+
+## Concurrency contract and official comparison (2026-10-01)
+
+The automatic policy now distinguishes omitted codec threads (`None`) from an
+explicit value such as `1`. Specifying either concurrency option preserves its
+explicit value and uses the conservative resource caps. Automatic deletion no
+longer warns merely because the dataset has fewer files than the default job
+limit. These are correctness fixes, not new performance improvements.
+
+Job `4691` compared accepted `1098f7d`, the corrected source, and unmodified
+official LeRobot `fb5cfec7` in three serial alternating rounds. It used the
+same 12-episode / 12,370-frame / three-camera 640x480 H.264 fixture, 16 CPUs,
+64 GiB, local scratch XFS, warm/uncontrolled cache, BLAS/OpenMP pools of one
+thread and a Rayon pool of 16. LeTools auto selected eight jobs and two encoder
+threads; official reencode used eight jobs and one encoder thread.
+
+| Reencode implementation | Wall s | Episodes/s | Frames/s | CPU s | Peak RSS MiB | Peak threads |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| LeTools before contract fix | 35.077 | 0.3421 | 352.65 | 494.79 | 730.98 | 84 |
+| LeTools after contract fix | 35.167 | 0.3412 | 351.75 | 494.38 | 695.16 | 84 |
+| Official LeRobot | 35.202 | 0.3409 | 351.40 | 225.65 | 3113.09 | 136 |
+
+Reencoding is effectively tied with official in this run. The contract fix's
+0.26% wall-time change is within measured variation. Both tools use H.264
+CRF 23/veryfast at the original resolution, but official uses GOP 2 while
+LeTools forces episode IDRs without B-frames. LeTools additionally recomputes
+all-pixel statistics from decoded output; the inspected official reencoder
+retains existing episode statistics. This is an operational comparison, not
+an equal-bitstream or equal-quality benchmark. Official's initial copy is
+included to give both tools a fresh-output contract.
+
+The full Python suite passed 119 tests in jobs `4690` and `4697`. The medium
+outputs passed deep validation, numeric/task-row comparison, deletion packet
+digests, and official metadata/dataset boundary reads in job `4694`. A stricter
+full-conversion loader check also exposed missing pandas task-index metadata
+in the existing conversion and merge writers. These writers now retain task
+text as both a physical Arrow column and the pandas row index, matching the
+already-correct editor writer and the official task lookup contract.
+
+Job `4695` completed five total deletion samples per implementation. Medians
+were 0.854 s before the correction, 0.805 s after it, and 29.924 s official
+(10,786 versus 290 output frames/s, approximately 37x on this fixture).
+The deletion fast path is unchanged; its short timings remain noisy.
+
+The full dagger gate in job `4694` covered both directions and both roundtrips,
+each with 3,457 episodes, 2,415,341 frames, and 10,371 video-slice comparisons.
+After the task-index fix, job `4698` regenerated both full v3 outputs, passed
+deep/semantic/payload comparisons, and passed official metadata and dataset
+loaders with text tasks. Earlier outputs were left intact for traceability.
+
+Five paired core-conversion checks (`4699`) passed semantic/payload comparison
+for every output, but timings were too variable for a precise regression
+bound: forward medians were 2.863/4.067 s and reverse 15.693/13.400 s. Baseline
+forward samples alone ranged from 1.257 to 25.733 s. This metadata correction
+is retained for correctness; these noisy measurements are not presented as a
+conversion performance improvement or a guarantee of unchanged throughput.

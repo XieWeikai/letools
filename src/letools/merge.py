@@ -844,6 +844,13 @@ def _write_v30_metadata(
         [{"task_index": index, "task": task} for index, task in manifest.tasks.items()],
         schema=pa.schema([("task_index", pa.int64()), ("task", pa.string())]),
     )
+    # Match the official task lookup: row names are the language labels.
+    # The named index is still stored as a physical column for Arrow readers.
+    task_table = pa.Table.from_pandas(
+        task_table.to_pandas().set_index("task"),
+        schema=task_table.schema,
+        preserve_index=True,
+    )
     task_path = destination / "meta/tasks.parquet"
     task_path.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(task_table, task_path)
